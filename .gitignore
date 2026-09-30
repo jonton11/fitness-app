@@ -1,5 +1,9 @@
 *.gem
 *.rbc
+*.swp
+*.swo
+*~
+.DS_Store
 /.config
 /coverage/
 /InstalledFiles
@@ -9,6 +13,47 @@
 /test/tmp/
 /test/version_tmp/
 /tmp/
+/log/*
+!/log/.keep
+/storage/*
+!/storage/.keep
+
+# Rails app artifacts
+/api/.bundle/
+/api/config/credentials.yml.enc
+/api/config/master.key
+/api/log/*
+!/api/log/.keep
+/api/storage/*
+!/api/storage/.keep
+/api/tmp/*
+!/api/tmp/.keep
+!/api/tmp/pids/
+/api/tmp/pids/*
+!/api/tmp/pids/.keep
+/api/vendor/bundle/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# iOS / Xcode
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
 
 # Used by dotenv library to load environment variables.
 # .env
