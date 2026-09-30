@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1
 # check=error=true
 
-# This Dockerfile is designed for production, not development. Use with Kamal or build'n'run by hand:
+# This Dockerfile is designed for production, not development. Use the root
+# docker-compose.yml file for local development.
 # docker build -t api .
-# docker run -d -p 80:3000 -e RAILS_MASTER_KEY=<value from config/master.key> --name api api
 
-# For a containerized dev environment, see Dev Containers: https://guides.rubyonrails.org/getting_started_with_devcontainer.html
+# Production runtime secrets must be provided by environment variables.
 
 # Make sure RUBY_VERSION matches the Ruby version in .ruby-version
 ARG RUBY_VERSION=3.3.1
