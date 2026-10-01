@@ -2,6 +2,8 @@
 
 React and TypeScript web client for the personal fitness app.
 
+The current app surface is the exercise library: search, create, edit, archive, and restore exercises through the Rails API.
+
 ## Commands
 
 ```sh
