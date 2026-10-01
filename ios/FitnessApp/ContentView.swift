@@ -13,7 +13,7 @@ struct ContentView: View {
                     Text("Fitness")
                         .font(.largeTitle.weight(.bold))
 
-                    Text("Exercise management is available in the Exercises tab.")
+                    Text("Workout templates and exercise management are available in the tabs.")
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -23,6 +23,11 @@ struct ContentView: View {
             .tabItem {
                 Label("Home", systemImage: "house")
             }
+
+            WorkoutTemplatesView()
+                .tabItem {
+                    Label("Workouts", systemImage: "figure.strengthtraining.traditional")
+                }
 
             ExercisesView()
                 .tabItem {
