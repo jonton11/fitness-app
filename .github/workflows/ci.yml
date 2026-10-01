@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  api:
+    name: Rails API
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: fitness_test
+          POSTGRES_PASSWORD: fitness
+          POSTGRES_USER: fitness
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fitness -d fitness_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://fitness:fitness@localhost:5432/fitness_test
+      RAILS_ENV: test
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libpq-dev
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+          working-directory: api
+      - name: Prepare database
+        run: bin/rails db:prepare
+      - name: Test
+        run: bin/rails test
+      - name: Lint
+        run: bin/rubocop
+      - name: Security scan
+        run: bin/brakeman --no-pager
+
+  web:
+    name: React Web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format
+      - run: npm run test
+      - run: npm run build
+      - run: npm audit --audit-level=moderate
+
+  ios:
+    name: SwiftUI iOS
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build for testing
+        run: xcodebuild -project FitnessApp.xcodeproj -scheme FitnessApp -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build-for-testing
+
+  compose:
+    name: Compose Config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config
