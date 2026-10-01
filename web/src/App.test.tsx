@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
 import type { Exercise } from './api/exercises'
+import type { WorkoutTemplate } from './api/workoutTemplates'
 
 const inclinePress: Exercise = {
   id: 'exercise-1',
@@ -38,6 +39,17 @@ const deadBug: Exercise = {
   lock_version: 0,
 }
 
+const upperTemplate: WorkoutTemplate = {
+  id: 'template-1',
+  name: 'Upper Body',
+  notes: 'Main upper body day.',
+  archived_at: null,
+  created_at: '2026-10-01T00:00:00.000Z',
+  updated_at: '2026-10-01T00:00:00.000Z',
+  lock_version: 0,
+  slots: [],
+}
+
 describe('App', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
@@ -52,9 +64,11 @@ describe('App', () => {
   })
 
   it('renders exercises from the API', async () => {
+    mockJsonResponse({ workout_templates: [], meta: {} })
     mockJsonResponse({ exercises: [inclinePress, deadBug], meta: {} })
 
     render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Exercises' }))
 
     expect(
       await screen.findByRole('heading', { name: 'Exercises' }),
@@ -72,10 +86,12 @@ describe('App', () => {
       load_type: 'machine_stack',
     } satisfies Exercise
 
+    mockJsonResponse({ workout_templates: [], meta: {} })
     mockJsonResponse({ exercises: [], meta: {} })
     mockJsonResponse({ exercise: savedExercise }, 201)
 
     render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Exercises' }))
 
     fireEvent.change(await screen.findByLabelText('Name'), {
       target: { value: 'Cable Lateral Raise' },
@@ -89,7 +105,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledTimes(2)
+      expect(fetch).toHaveBeenCalledTimes(3)
     })
     expect(fetch).toHaveBeenLastCalledWith(
       '/api/v1/exercises',
@@ -110,10 +126,12 @@ describe('App', () => {
       lock_version: 1,
     } satisfies Exercise
 
+    mockJsonResponse({ workout_templates: [], meta: {} })
     mockJsonResponse({ exercises: [inclinePress], meta: {} })
     mockJsonResponse({ exercise: updatedExercise })
 
     render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Exercises' }))
 
     fireEvent.click(await screen.findByText('Incline Dumbbell Press'))
     fireEvent.change(screen.getByLabelText('Name'), {
@@ -122,7 +140,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledTimes(2)
+      expect(fetch).toHaveBeenCalledTimes(3)
     })
     expect(fetch).toHaveBeenLastCalledWith(
       '/api/v1/exercises/exercise-1',
@@ -136,6 +154,7 @@ describe('App', () => {
   })
 
   it('filters archived exercises', async () => {
+    mockJsonResponse({ workout_templates: [], meta: {} })
     mockJsonResponse({ exercises: [inclinePress], meta: {} })
     mockJsonResponse({
       exercises: [{ ...deadBug, archived_at: '2026-10-01T01:00:00.000Z' }],
@@ -143,6 +162,7 @@ describe('App', () => {
     })
 
     render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Exercises' }))
 
     fireEvent.click(await screen.findByRole('button', { name: 'Archived' }))
 
@@ -162,16 +182,18 @@ describe('App', () => {
       lock_version: 1,
     } satisfies Exercise
 
+    mockJsonResponse({ workout_templates: [], meta: {} })
     mockJsonResponse({ exercises: [inclinePress], meta: {} })
     mockJsonResponse({ exercise: archivedExercise })
 
     render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Exercises' }))
 
     fireEvent.click(await screen.findByText('Incline Dumbbell Press'))
     fireEvent.click(screen.getByRole('button', { name: 'Archive' }))
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledTimes(2)
+      expect(fetch).toHaveBeenCalledTimes(3)
     })
     expect(confirm).toHaveBeenCalledWith(
       expect.stringContaining('Past workout history will be preserved.'),
@@ -185,6 +207,53 @@ describe('App', () => {
         'Incline Dumbbell Press',
       ),
     ).not.toBeInTheDocument()
+  })
+
+  it('renders workout templates from the API', async () => {
+    mockJsonResponse({ workout_templates: [upperTemplate], meta: {} })
+
+    render(<App />)
+
+    expect(
+      await screen.findByRole('heading', { name: 'Workouts' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Upper Body')).toBeInTheDocument()
+    expect(screen.getByText('0 exercises')).toBeInTheDocument()
+  })
+
+  it('creates a workout template', async () => {
+    const savedTemplate = {
+      ...upperTemplate,
+      id: 'template-2',
+      name: 'Core & Arms',
+      notes: 'Core and arm accessories.',
+    } satisfies WorkoutTemplate
+
+    mockJsonResponse({ workout_templates: [], meta: {} })
+    mockJsonResponse({ workout_template: savedTemplate }, 201)
+
+    render(<App />)
+
+    fireEvent.change(await screen.findByLabelText('Name'), {
+      target: { value: 'Core & Arms' },
+    })
+    fireEvent.change(screen.getByLabelText('Notes'), {
+      target: { value: 'Core and arm accessories.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(2)
+    })
+    expect(fetch).toHaveBeenLastCalledWith(
+      '/api/v1/workout_templates',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(lastWorkoutTemplateRequest()).toMatchObject({
+      name: 'Core & Arms',
+      notes: 'Core and arm accessories.',
+    })
+    expect(await screen.findByText('Core & Arms')).toBeInTheDocument()
   })
 })
 
@@ -205,4 +274,14 @@ function lastExerciseRequest() {
   }
 
   return body.exercise
+}
+
+function lastWorkoutTemplateRequest() {
+  const lastCall = vi.mocked(fetch).mock.calls.at(-1)
+  const init = lastCall?.[1] as RequestInit | undefined
+  const body = JSON.parse(init?.body as string) as {
+    workout_template: Record<string, unknown>
+  }
+
+  return body.workout_template
 }

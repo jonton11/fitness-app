@@ -26,6 +26,34 @@ body {
   min-height: 100vh;
 }
 
+.app-nav {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  border-bottom: 1px solid #d8dee8;
+  background: #ffffff;
+  padding: 12px 16px;
+}
+
+.app-nav button {
+  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #536071;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 8px 14px;
+}
+
+.app-nav button:hover,
+.app-nav button.selected {
+  border-color: #c8d1df;
+  background: #f4f8ff;
+  color: #172033;
+}
+
 .app-shell {
   box-sizing: border-box;
   min-height: 100vh;
