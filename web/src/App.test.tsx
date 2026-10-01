@@ -66,6 +66,7 @@ describe('App', () => {
   it('renders exercises from the API', async () => {
     mockJsonResponse({ workout_templates: [], meta: {} })
     mockJsonResponse({ exercises: [inclinePress, deadBug], meta: {} })
+    mockJsonResponse({ exercises: [inclinePress, deadBug], meta: {} })
 
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Exercises' }))
@@ -88,6 +89,7 @@ describe('App', () => {
 
     mockJsonResponse({ workout_templates: [], meta: {} })
     mockJsonResponse({ exercises: [], meta: {} })
+    mockJsonResponse({ exercises: [], meta: {} })
     mockJsonResponse({ exercise: savedExercise }, 201)
 
     render(<App />)
@@ -105,7 +107,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledTimes(3)
+      expect(fetch).toHaveBeenCalledTimes(4)
     })
     expect(fetch).toHaveBeenLastCalledWith(
       '/api/v1/exercises',
@@ -128,6 +130,7 @@ describe('App', () => {
 
     mockJsonResponse({ workout_templates: [], meta: {} })
     mockJsonResponse({ exercises: [inclinePress], meta: {} })
+    mockJsonResponse({ exercises: [inclinePress], meta: {} })
     mockJsonResponse({ exercise: updatedExercise })
 
     render(<App />)
@@ -140,7 +143,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledTimes(3)
+      expect(fetch).toHaveBeenCalledTimes(4)
     })
     expect(fetch).toHaveBeenLastCalledWith(
       '/api/v1/exercises/exercise-1',
@@ -155,6 +158,7 @@ describe('App', () => {
 
   it('filters archived exercises', async () => {
     mockJsonResponse({ workout_templates: [], meta: {} })
+    mockJsonResponse({ exercises: [inclinePress], meta: {} })
     mockJsonResponse({ exercises: [inclinePress], meta: {} })
     mockJsonResponse({
       exercises: [{ ...deadBug, archived_at: '2026-10-01T01:00:00.000Z' }],
@@ -184,6 +188,7 @@ describe('App', () => {
 
     mockJsonResponse({ workout_templates: [], meta: {} })
     mockJsonResponse({ exercises: [inclinePress], meta: {} })
+    mockJsonResponse({ exercises: [inclinePress], meta: {} })
     mockJsonResponse({ exercise: archivedExercise })
 
     render(<App />)
@@ -193,7 +198,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Archive' }))
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledTimes(3)
+      expect(fetch).toHaveBeenCalledTimes(4)
     })
     expect(confirm).toHaveBeenCalledWith(
       expect.stringContaining('Past workout history will be preserved.'),
@@ -211,6 +216,7 @@ describe('App', () => {
 
   it('renders workout templates from the API', async () => {
     mockJsonResponse({ workout_templates: [upperTemplate], meta: {} })
+    mockJsonResponse({ exercises: [inclinePress], meta: {} })
 
     render(<App />)
 
@@ -230,6 +236,7 @@ describe('App', () => {
     } satisfies WorkoutTemplate
 
     mockJsonResponse({ workout_templates: [], meta: {} })
+    mockJsonResponse({ exercises: [inclinePress], meta: {} })
     mockJsonResponse({ workout_template: savedTemplate }, 201)
 
     render(<App />)
@@ -243,7 +250,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledTimes(2)
+      expect(fetch).toHaveBeenCalledTimes(3)
     })
     expect(fetch).toHaveBeenLastCalledWith(
       '/api/v1/workout_templates',
@@ -254,6 +261,120 @@ describe('App', () => {
       notes: 'Core and arm accessories.',
     })
     expect(await screen.findByText('Core & Arms')).toBeInTheDocument()
+  })
+
+  it('saves workout template slots with substitutes and prescriptions', async () => {
+    const savedTemplate = {
+      ...upperTemplate,
+      name: 'Upper Body',
+      notes: 'Main upper body day.',
+      slots: [
+        {
+          id: 'slot-1',
+          position: 1,
+          label: 'Upper Chest Press',
+          default_exercise_id: inclinePress.id,
+          default_exercise: {
+            id: inclinePress.id,
+            name: inclinePress.name,
+            primary_muscle_group: inclinePress.primary_muscle_group,
+            load_type: inclinePress.load_type,
+            archived_at: null,
+          },
+          rest_seconds: 180,
+          created_at: '2026-10-01T00:00:00.000Z',
+          updated_at: '2026-10-01T00:00:00.000Z',
+          lock_version: 0,
+          exercise_options: [],
+          set_prescriptions: [],
+        },
+      ],
+    } satisfies WorkoutTemplate
+
+    mockJsonResponse({ workout_templates: [], meta: {} })
+    mockJsonResponse({ exercises: [inclinePress, deadBug], meta: {} })
+    mockJsonResponse({ workout_template: savedTemplate }, 201)
+
+    render(<App />)
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(2)
+    })
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Upper Body' },
+    })
+    fireEvent.change(screen.getByLabelText('Notes'), {
+      target: { value: 'Main upper body day.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Add Slot' }))
+
+    fireEvent.change(screen.getByLabelText('Slot 1 label'), {
+      target: { value: 'Upper Chest Press' },
+    })
+    fireEvent.change(screen.getByLabelText('Slot 1 rest seconds'), {
+      target: { value: '180' },
+    })
+    fireEvent.change(screen.getByLabelText('Slot 1 starting load'), {
+      target: { value: '60' },
+    })
+    fireEvent.change(screen.getByLabelText('Slot 1 next load'), {
+      target: { value: '65' },
+    })
+    fireEvent.change(screen.getByLabelText('Slot 1 progression increment'), {
+      target: { value: '5' },
+    })
+    fireEvent.change(screen.getByLabelText('Slot 1 substitute exercise'), {
+      target: { value: deadBug.id },
+    })
+    fireEvent.change(screen.getByLabelText('Slot 1 set 1 load strategy'), {
+      target: { value: 'percentage_of_working_load' },
+    })
+    fireEvent.change(screen.getByLabelText('Slot 1 set 1 load value'), {
+      target: { value: '65' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(3)
+    })
+
+    const request = lastWorkoutTemplateRequest()
+    expect(request).toMatchObject({
+      name: 'Upper Body',
+      notes: 'Main upper body day.',
+    })
+    expect(request.slots).toMatchObject([
+      {
+        position: 1,
+        label: 'Upper Chest Press',
+        default_exercise_id: inclinePress.id,
+        rest_seconds: 180,
+        exercise_options: [
+          {
+            position: 1,
+            exercise_id: inclinePress.id,
+            starting_load_value: 60,
+            next_load_value: 65,
+            progression_increment: 5,
+          },
+          {
+            position: 2,
+            exercise_id: deadBug.id,
+          },
+        ],
+        set_prescriptions: [
+          {
+            position: 1,
+            set_type: 'working',
+            rep_min: 5,
+            rep_max: 8,
+            load_strategy: 'percentage_of_working_load',
+            load_value: 65,
+          },
+        ],
+      },
+    ])
   })
 })
 
