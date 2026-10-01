@@ -10,6 +10,12 @@
 		0A0000010000000000000001 /* FitnessApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000001 /* FitnessApp.swift */; };
 		0A0000010000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000002 /* ContentView.swift */; };
 		0A0000010000000000000003 /* FitnessAppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000003 /* FitnessAppTests.swift */; };
+		0A0000010000000000000010 /* Exercise.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000010 /* Exercise.swift */; };
+		0A0000010000000000000011 /* ExerciseAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000011 /* ExerciseAPIClient.swift */; };
+		0A0000010000000000000012 /* ExerciseFormState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000012 /* ExerciseFormState.swift */; };
+		0A0000010000000000000013 /* ExercisesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000013 /* ExercisesViewModel.swift */; };
+		0A0000010000000000000014 /* ExerciseFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000014 /* ExerciseFormView.swift */; };
+		0A0000010000000000000015 /* ExercisesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000015 /* ExercisesView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -28,6 +34,12 @@
 		0A0000020000000000000003 /* FitnessAppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FitnessAppTests.swift; sourceTree = "<group>"; };
 		0A0000020000000000000004 /* FitnessApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FitnessApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0A0000020000000000000005 /* FitnessAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FitnessAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		0A0000020000000000000010 /* Exercise.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Exercise.swift; sourceTree = "<group>"; };
+		0A0000020000000000000011 /* ExerciseAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseAPIClient.swift; sourceTree = "<group>"; };
+		0A0000020000000000000012 /* ExerciseFormState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseFormState.swift; sourceTree = "<group>"; };
+		0A0000020000000000000013 /* ExercisesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExercisesViewModel.swift; sourceTree = "<group>"; };
+		0A0000020000000000000014 /* ExerciseFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseFormView.swift; sourceTree = "<group>"; };
+		0A0000020000000000000015 /* ExercisesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExercisesView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,6 +74,9 @@
 			children = (
 				0A0000020000000000000001 /* FitnessApp.swift */,
 				0A0000020000000000000002 /* ContentView.swift */,
+				0A0000070000000000000010 /* Models */,
+				0A0000070000000000000011 /* Data */,
+				0A0000070000000000000013 /* Features */,
 			);
 			path = FitnessApp;
 			sourceTree = "<group>";
@@ -81,6 +96,49 @@
 				0A0000020000000000000005 /* FitnessAppTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		0A0000070000000000000010 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				0A0000020000000000000010 /* Exercise.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		0A0000070000000000000011 /* Data */ = {
+			isa = PBXGroup;
+			children = (
+				0A0000070000000000000012 /* API */,
+			);
+			path = Data;
+			sourceTree = "<group>";
+		};
+		0A0000070000000000000012 /* API */ = {
+			isa = PBXGroup;
+			children = (
+				0A0000020000000000000011 /* ExerciseAPIClient.swift */,
+			);
+			path = API;
+			sourceTree = "<group>";
+		};
+		0A0000070000000000000013 /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				0A0000070000000000000014 /* Exercises */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		0A0000070000000000000014 /* Exercises */ = {
+			isa = PBXGroup;
+			children = (
+				0A0000020000000000000012 /* ExerciseFormState.swift */,
+				0A0000020000000000000013 /* ExercisesViewModel.swift */,
+				0A0000020000000000000014 /* ExerciseFormView.swift */,
+				0A0000020000000000000015 /* ExercisesView.swift */,
+			);
+			path = Exercises;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -183,6 +241,12 @@
 			files = (
 				0A0000010000000000000001 /* FitnessApp.swift in Sources */,
 				0A0000010000000000000002 /* ContentView.swift in Sources */,
+				0A0000010000000000000010 /* Exercise.swift in Sources */,
+				0A0000010000000000000011 /* ExerciseAPIClient.swift in Sources */,
+				0A0000010000000000000012 /* ExerciseFormState.swift in Sources */,
+				0A0000010000000000000013 /* ExercisesViewModel.swift in Sources */,
+				0A0000010000000000000014 /* ExerciseFormView.swift in Sources */,
+				0A0000010000000000000015 /* ExercisesView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
