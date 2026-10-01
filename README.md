@@ -18,14 +18,19 @@ docker compose up --build
 
 The Rails API serves `http://localhost:3000/api/v1/health`.
 Exercise management endpoints are available under `http://localhost:3000/api/v1/exercises`.
+Workout template endpoints are available under `http://localhost:3000/api/v1/workout_templates`.
 
-The web app serves `http://localhost:5173`, proxies `/api` requests to Rails, and opens on the exercise library.
+The web app serves `http://localhost:5173`, proxies `/api` requests to Rails, and opens on workout templates.
 
 ## Exercise Library
 
 Exercises can be created, searched, edited, archived, and restored. Archived exercises are hidden from the default active list, but remain available through archive filters for historical workout records.
 
 The same Rails API backs the React web client and the SwiftUI Exercises tab.
+
+## Workout Templates
+
+Workout templates can be created, edited, archived, and restored. Templates contain ordered slots with a default exercise, rest time, set prescription, starting/next load, and progression increment. The web client supports substitute configuration and slot reordering; the iOS Workouts tab supports basic online template and slot management.
 
 ## API
 
