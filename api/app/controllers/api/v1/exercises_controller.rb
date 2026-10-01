@@ -6,6 +6,7 @@ module Api
 
       def index
         exercises = Exercise.order(:name)
+        exercises = apply_status_filter(exercises)
         exercises = apply_search(exercises)
         total = exercises.count
         exercises = exercises.limit(limit).offset(offset)
@@ -53,9 +54,21 @@ module Api
           :load_type,
           :notes,
           :external_url,
+          :archived_at,
           :lock_version,
           secondary_muscle_groups: []
         )
+      end
+
+      def apply_status_filter(exercises)
+        case params.fetch(:status, "active")
+        when "all"
+          exercises
+        when "archived"
+          exercises.where.not(archived_at: nil)
+        else
+          exercises.where(archived_at: nil)
+        end
       end
 
       def apply_search(exercises)

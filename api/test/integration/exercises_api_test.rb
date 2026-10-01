@@ -13,6 +13,51 @@ class ExercisesApiTest < ActionDispatch::IntegrationTest
     assert_equal({ "limit" => 50, "offset" => 0, "total" => 2 }, body.fetch("meta"))
   end
 
+  test "hides archived exercises by default" do
+    create_exercise(name: "Active Exercise", primary_muscle_group: "Chest", load_type: "lb")
+    create_exercise(
+      name: "Archived Exercise",
+      primary_muscle_group: "Back",
+      load_type: "kg",
+      archived_at: Time.current
+    )
+
+    get "/api/v1/exercises"
+
+    assert_response :success
+    assert_equal [ "Active Exercise" ], response.parsed_body.fetch("exercises").map { |exercise| exercise.fetch("name") }
+  end
+
+  test "lists archived exercises" do
+    create_exercise(name: "Active Exercise", primary_muscle_group: "Chest", load_type: "lb")
+    create_exercise(
+      name: "Archived Exercise",
+      primary_muscle_group: "Back",
+      load_type: "kg",
+      archived_at: Time.current
+    )
+
+    get "/api/v1/exercises", params: { status: "archived" }
+
+    assert_response :success
+    assert_equal [ "Archived Exercise" ], response.parsed_body.fetch("exercises").map { |exercise| exercise.fetch("name") }
+  end
+
+  test "lists all exercises" do
+    create_exercise(name: "Active Exercise", primary_muscle_group: "Chest", load_type: "lb")
+    create_exercise(
+      name: "Archived Exercise",
+      primary_muscle_group: "Back",
+      load_type: "kg",
+      archived_at: Time.current
+    )
+
+    get "/api/v1/exercises", params: { status: "all" }
+
+    assert_response :success
+    assert_equal [ "Active Exercise", "Archived Exercise" ], response.parsed_body.fetch("exercises").map { |exercise| exercise.fetch("name") }
+  end
+
   test "searches exercises by name and primary muscle group" do
     create_exercise(name: "Cable Lateral Raise", primary_muscle_group: "Shoulders", load_type: "machine_stack")
     create_exercise(name: "Dead Bug", primary_muscle_group: "Core", load_type: "none")
@@ -76,6 +121,43 @@ class ExercisesApiTest < ActionDispatch::IntegrationTest
     assert_equal "Jefferson Curls", body.fetch("name")
     assert_equal "Posterior Chain", body.fetch("primary_muscle_group")
     assert_equal 1, body.fetch("lock_version")
+  end
+
+  test "archives exercise through update" do
+    exercise = create_exercise(name: "Incline Machine Press", primary_muscle_group: "Chest", load_type: "machine_stack")
+
+    patch "/api/v1/exercises/#{exercise.id}", params: {
+      exercise: {
+        archived_at: Time.current.iso8601,
+        lock_version: exercise.lock_version
+      }
+    }
+
+    assert_response :success
+    body = response.parsed_body.fetch("exercise")
+    assert_not_nil body.fetch("archived_at")
+    assert_predicate exercise.reload, :archived_at?
+  end
+
+  test "restores exercise through update" do
+    exercise = create_exercise(
+      name: "Incline Machine Press",
+      primary_muscle_group: "Chest",
+      load_type: "machine_stack",
+      archived_at: Time.current
+    )
+
+    patch "/api/v1/exercises/#{exercise.id}", params: {
+      exercise: {
+        archived_at: nil,
+        lock_version: exercise.lock_version
+      }
+    }
+
+    assert_response :success
+    body = response.parsed_body.fetch("exercise")
+    assert_nil body.fetch("archived_at")
+    assert_nil exercise.reload.archived_at
   end
 
   test "returns validation errors" do
