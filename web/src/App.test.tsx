@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
@@ -35,6 +41,10 @@ const deadBug: Exercise = {
 describe('App', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => true),
+    )
   })
 
   afterEach(() => {
@@ -123,6 +133,58 @@ describe('App', () => {
       lock_version: 0,
     })
     expect(await screen.findByText('Incline Press')).toBeInTheDocument()
+  })
+
+  it('filters archived exercises', async () => {
+    mockJsonResponse({ exercises: [inclinePress], meta: {} })
+    mockJsonResponse({
+      exercises: [{ ...deadBug, archived_at: '2026-10-01T01:00:00.000Z' }],
+      meta: {},
+    })
+
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Archived' }))
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenLastCalledWith(
+        '/api/v1/exercises?status=archived',
+        expect.anything(),
+      )
+    })
+    expect(await screen.findByText('Dead Bug')).toBeInTheDocument()
+  })
+
+  it('archives an exercise and removes it from the active list', async () => {
+    const archivedExercise = {
+      ...inclinePress,
+      archived_at: '2026-10-01T01:00:00.000Z',
+      lock_version: 1,
+    } satisfies Exercise
+
+    mockJsonResponse({ exercises: [inclinePress], meta: {} })
+    mockJsonResponse({ exercise: archivedExercise })
+
+    render(<App />)
+
+    fireEvent.click(await screen.findByText('Incline Dumbbell Press'))
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }))
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(2)
+    })
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining('Past workout history will be preserved.'),
+    )
+    expect(lastExerciseRequest()).toMatchObject({
+      archived_at: expect.any(String) as string,
+      lock_version: 0,
+    })
+    expect(
+      within(screen.getByLabelText('Exercise list')).queryByText(
+        'Incline Dumbbell Press',
+      ),
+    ).not.toBeInTheDocument()
   })
 })
 

@@ -32,8 +32,11 @@ export type ExercisePayload = {
   load_type: LoadType
   notes: string | null
   external_url: string | null
+  archived_at?: string | null
   lock_version?: number
 }
+
+export type ExerciseStatus = 'active' | 'archived' | 'all'
 
 export type ApiError = {
   field: string
@@ -53,8 +56,13 @@ type ErrorResponse = {
   errors: ApiError[]
 }
 
-export async function listExercises(query: string): Promise<Exercise[]> {
+export async function listExercises(
+  query: string,
+  status: ExerciseStatus,
+): Promise<Exercise[]> {
   const params = new URLSearchParams()
+
+  params.set('status', status)
 
   if (query.trim()) {
     params.set('q', query.trim())

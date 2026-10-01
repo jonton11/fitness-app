@@ -8,7 +8,12 @@ import {
   loadTypes,
   updateExercise,
 } from '../../api/exercises'
-import type { Exercise, ExercisePayload, LoadType } from '../../api/exercises'
+import type {
+  Exercise,
+  ExercisePayload,
+  ExerciseStatus,
+  LoadType,
+} from '../../api/exercises'
 
 type Draft = {
   name: string
@@ -42,6 +47,7 @@ const loadTypeLabels: Record<LoadType, string> = {
 export function ExerciseLibrary() {
   const [exercises, setExercises] = useState<Exercise[]>([])
   const [query, setQuery] = useState('')
+  const [status, setStatus] = useState<ExerciseStatus>('active')
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(
     null,
   )
@@ -53,7 +59,7 @@ export function ExerciseLibrary() {
   useEffect(() => {
     let isCurrent = true
 
-    listExercises(query)
+    listExercises(query, status)
       .then((nextExercises) => {
         if (isCurrent) {
           setExercises(nextExercises)
@@ -73,7 +79,7 @@ export function ExerciseLibrary() {
     return () => {
       isCurrent = false
     }
-  }, [query])
+  }, [query, status])
 
   const selectedId = selectedExercise?.id
 
@@ -89,6 +95,14 @@ export function ExerciseLibrary() {
 
   function handleQueryChange(value: string) {
     setQuery(value)
+    setIsLoading(true)
+  }
+
+  function handleStatusChange(nextStatus: ExerciseStatus) {
+    setStatus(nextStatus)
+    setSelectedExercise(null)
+    setDraft(emptyDraft)
+    setErrors([])
     setIsLoading(true)
   }
 
@@ -136,6 +150,45 @@ export function ExerciseLibrary() {
     }
   }
 
+  async function handleArchiveToggle() {
+    if (!selectedExercise) {
+      return
+    }
+
+    if (
+      !selectedExercise.archived_at &&
+      !confirmArchive(selectedExercise.name)
+    ) {
+      return
+    }
+
+    setIsSaving(true)
+    setErrors([])
+
+    const payload = {
+      ...toPayload(draft, selectedExercise),
+      archived_at: selectedExercise.archived_at
+        ? null
+        : new Date().toISOString(),
+    }
+
+    try {
+      const savedExercise = await updateExercise(selectedExercise.id, payload)
+      setSelectedExercise(savedExercise)
+      setExercises((currentExercises) =>
+        shouldShowInCurrentStatus(savedExercise, status)
+          ? upsertExercise(currentExercises, savedExercise)
+          : currentExercises.filter(
+              (exercise) => exercise.id !== savedExercise.id,
+            ),
+      )
+    } catch (error) {
+      setErrors(extractMessages(error))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   return (
     <main className="app-shell">
       <section className="library-layout" aria-labelledby="exercise-title">
@@ -167,6 +220,21 @@ export function ExerciseLibrary() {
               placeholder="Search exercises"
             />
 
+            <div className="filter-tabs" aria-label="Exercise status">
+              {(['active', 'archived', 'all'] satisfies ExerciseStatus[]).map(
+                (nextStatus) => (
+                  <button
+                    className={status === nextStatus ? 'selected' : ''}
+                    key={nextStatus}
+                    type="button"
+                    onClick={() => handleStatusChange(nextStatus)}
+                  >
+                    {statusLabel(nextStatus)}
+                  </button>
+                ),
+              )}
+            </div>
+
             <div className="list-stack" aria-busy={isLoading}>
               {exercises.map((exercise) => (
                 <button
@@ -180,6 +248,7 @@ export function ExerciseLibrary() {
                     <small>
                       {exercise.primary_muscle_group} ·{' '}
                       {loadTypeLabels[exercise.load_type]}
+                      {exercise.archived_at ? ' · Archived' : ''}
                     </small>
                   </span>
                 </button>
@@ -196,6 +265,12 @@ export function ExerciseLibrary() {
             aria-labelledby="exercise-form-title"
           >
             <h2 id="exercise-form-title">{panelTitle}</h2>
+
+            {selectedExercise?.archived_at ? (
+              <p className="archive-note" role="status">
+                Archived exercises are hidden from normal selection.
+              </p>
+            ) : null}
 
             {errors.length ? (
               <div className="error-list" role="alert">
@@ -311,6 +386,20 @@ export function ExerciseLibrary() {
                 >
                   {isSaving ? 'Saving' : 'Save'}
                 </button>
+                {selectedExercise ? (
+                  <button
+                    className={
+                      selectedExercise.archived_at
+                        ? 'secondary-button'
+                        : 'danger-button'
+                    }
+                    type="button"
+                    onClick={handleArchiveToggle}
+                    disabled={isSaving}
+                  >
+                    {selectedExercise.archived_at ? 'Restore' : 'Archive'}
+                  </button>
+                ) : null}
                 <button
                   className="secondary-button"
                   type="button"
@@ -355,6 +444,39 @@ function upsertExercise(exercises: Exercise[], exercise: Exercise): Exercise[] {
 
   return exercises.map((current) =>
     current.id === exercise.id ? exercise : current,
+  )
+}
+
+function shouldShowInCurrentStatus(
+  exercise: Exercise,
+  status: ExerciseStatus,
+): boolean {
+  if (status === 'all') {
+    return true
+  }
+
+  return status === 'archived'
+    ? Boolean(exercise.archived_at)
+    : !exercise.archived_at
+}
+
+function statusLabel(status: ExerciseStatus): string {
+  if (status === 'all') {
+    return 'All'
+  }
+
+  return status === 'archived' ? 'Archived' : 'Active'
+}
+
+function confirmArchive(name: string): boolean {
+  return window.confirm(
+    [
+      `Archive "${name}"?`,
+      '',
+      'Past workout history will be preserved.',
+      'It will be removed from normal exercise selection.',
+      'You can restore it later.',
+    ].join('\n'),
   )
 }
 
