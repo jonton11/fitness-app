@@ -24,7 +24,7 @@ module Api
 
       def workout_session
         @workout_session ||= WorkoutSession
-                             .includes(exercises: [ :selected_exercise, { set_results: :workout_template_set_prescription } ])
+                             .includes(exercises: [ :selected_exercise, { workout_session_sets: :workout_template_set_prescription } ])
                              .find(params[:id])
       end
 

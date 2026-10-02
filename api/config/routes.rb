@@ -6,6 +6,7 @@ Rails.application.routes.draw do
       resources :exercises, only: %i[index show create update]
       resources :workout_templates, only: %i[index show create update]
       resources :workout_sessions, only: %i[create show]
+      resources :workout_session_sets, only: %i[update]
       get "health", to: "health#show"
     end
   end

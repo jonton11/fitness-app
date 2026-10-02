@@ -41,13 +41,13 @@ module WorkoutSessions
           progression_increment: option&.progression_increment
         )
 
-        snapshot_set_results!(session_exercise, slot, planned_working_load_value)
+        snapshot_workout_session_sets!(session_exercise, slot, planned_working_load_value)
       end
     end
 
-    def snapshot_set_results!(session_exercise, slot, planned_working_load_value)
+    def snapshot_workout_session_sets!(session_exercise, slot, planned_working_load_value)
       slot.set_prescriptions.each do |prescription|
-        session_exercise.set_results.create!(
+        session_exercise.workout_session_sets.create!(
           workout_template_set_prescription: prescription,
           position: prescription.position,
           set_type: prescription.set_type,
