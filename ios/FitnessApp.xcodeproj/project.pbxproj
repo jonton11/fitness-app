@@ -16,6 +16,12 @@
 		0A0000010000000000000013 /* ExercisesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000013 /* ExercisesViewModel.swift */; };
 		0A0000010000000000000014 /* ExerciseFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000014 /* ExerciseFormView.swift */; };
 		0A0000010000000000000015 /* ExercisesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000015 /* ExercisesView.swift */; };
+		0A0000010000000000000016 /* WorkoutTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000016 /* WorkoutTemplate.swift */; };
+		0A0000010000000000000017 /* WorkoutTemplateAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000017 /* WorkoutTemplateAPIClient.swift */; };
+		0A0000010000000000000018 /* WorkoutTemplateFormState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000018 /* WorkoutTemplateFormState.swift */; };
+		0A0000010000000000000019 /* WorkoutTemplatesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000019 /* WorkoutTemplatesViewModel.swift */; };
+		0A000001000000000000001A /* WorkoutTemplateFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A000002000000000000001A /* WorkoutTemplateFormView.swift */; };
+		0A000001000000000000001B /* WorkoutTemplatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A000002000000000000001B /* WorkoutTemplatesView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -40,6 +46,12 @@
 		0A0000020000000000000013 /* ExercisesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExercisesViewModel.swift; sourceTree = "<group>"; };
 		0A0000020000000000000014 /* ExerciseFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseFormView.swift; sourceTree = "<group>"; };
 		0A0000020000000000000015 /* ExercisesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExercisesView.swift; sourceTree = "<group>"; };
+		0A0000020000000000000016 /* WorkoutTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTemplate.swift; sourceTree = "<group>"; };
+		0A0000020000000000000017 /* WorkoutTemplateAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTemplateAPIClient.swift; sourceTree = "<group>"; };
+		0A0000020000000000000018 /* WorkoutTemplateFormState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTemplateFormState.swift; sourceTree = "<group>"; };
+		0A0000020000000000000019 /* WorkoutTemplatesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTemplatesViewModel.swift; sourceTree = "<group>"; };
+		0A000002000000000000001A /* WorkoutTemplateFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTemplateFormView.swift; sourceTree = "<group>"; };
+		0A000002000000000000001B /* WorkoutTemplatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTemplatesView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -102,6 +114,7 @@
 			isa = PBXGroup;
 			children = (
 				0A0000020000000000000010 /* Exercise.swift */,
+				0A0000020000000000000016 /* WorkoutTemplate.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -118,6 +131,7 @@
 			isa = PBXGroup;
 			children = (
 				0A0000020000000000000011 /* ExerciseAPIClient.swift */,
+				0A0000020000000000000017 /* WorkoutTemplateAPIClient.swift */,
 			);
 			path = API;
 			sourceTree = "<group>";
@@ -126,6 +140,7 @@
 			isa = PBXGroup;
 			children = (
 				0A0000070000000000000014 /* Exercises */,
+				0A0000070000000000000015 /* WorkoutTemplates */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -139,6 +154,17 @@
 				0A0000020000000000000015 /* ExercisesView.swift */,
 			);
 			path = Exercises;
+			sourceTree = "<group>";
+		};
+		0A0000070000000000000015 /* WorkoutTemplates */ = {
+			isa = PBXGroup;
+			children = (
+				0A0000020000000000000018 /* WorkoutTemplateFormState.swift */,
+				0A0000020000000000000019 /* WorkoutTemplatesViewModel.swift */,
+				0A000002000000000000001A /* WorkoutTemplateFormView.swift */,
+				0A000002000000000000001B /* WorkoutTemplatesView.swift */,
+			);
+			path = WorkoutTemplates;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -247,6 +273,12 @@
 				0A0000010000000000000013 /* ExercisesViewModel.swift in Sources */,
 				0A0000010000000000000014 /* ExerciseFormView.swift in Sources */,
 				0A0000010000000000000015 /* ExercisesView.swift in Sources */,
+				0A0000010000000000000016 /* WorkoutTemplate.swift in Sources */,
+				0A0000010000000000000017 /* WorkoutTemplateAPIClient.swift in Sources */,
+				0A0000010000000000000018 /* WorkoutTemplateFormState.swift in Sources */,
+				0A0000010000000000000019 /* WorkoutTemplatesViewModel.swift in Sources */,
+				0A000001000000000000001A /* WorkoutTemplateFormView.swift in Sources */,
+				0A000001000000000000001B /* WorkoutTemplatesView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

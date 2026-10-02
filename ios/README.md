@@ -2,7 +2,7 @@
 
 SwiftUI iPhone client for the personal fitness app.
 
-The app includes an Exercises tab for managing the shared exercise library through the Rails API.
+The app includes Workouts and Exercises tabs backed by the Rails API. Workout template management is online-only for now; offline workout execution and sync come later.
 
 ## Build
 

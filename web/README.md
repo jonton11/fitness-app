@@ -2,7 +2,7 @@
 
 React and TypeScript web client for the personal fitness app.
 
-The current app surface is the exercise library: search, create, edit, archive, and restore exercises through the Rails API.
+The current app surfaces are workout templates and the exercise library. Workout templates support ordered slots, default exercises, substitutes, set prescriptions, rest time, and load progression fields through the Rails API.
 
 ## Commands
 

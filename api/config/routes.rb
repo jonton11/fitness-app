@@ -4,6 +4,7 @@ Rails.application.routes.draw do
   namespace :api do
     namespace :v1 do
       resources :exercises, only: %i[index show create update]
+      resources :workout_templates, only: %i[index show create update]
       get "health", to: "health#show"
     end
   end
