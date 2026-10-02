@@ -297,52 +297,26 @@ module Api
         }
       end
 
-      def serialize_time(value)
-        value&.utc&.iso8601(3)
-      end
-
-      def serialize_decimal(value)
-        value&.to_f
-      end
-
       def render_record_invalid(error)
         render_validation_errors(error.record)
       end
 
-      def render_validation_errors(record)
-        render json: {
-          errors: record.errors.map do |error|
-            {
-              field: error.attribute.to_s,
-              code: error.type.to_s,
-              message: error.full_message
-            }
-          end
-        }, status: :unprocessable_content
-      end
-
       def render_not_found
-        render json: {
-          errors: [
-            {
-              field: "id",
-              code: "not_found",
-              message: "Workout template not found"
-            }
-          ]
-        }, status: :not_found
+        render_api_error(
+          field: "id",
+          code: ERROR_CODE_NOT_FOUND,
+          message: "Workout template not found",
+          status: :not_found
+        )
       end
 
       def render_conflict
-        render json: {
-          errors: [
-            {
-              field: "lock_version",
-              code: "stale",
-              message: "Workout template has been changed by another request"
-            }
-          ]
-        }, status: :conflict
+        render_api_error(
+          field: "lock_version",
+          code: ERROR_CODE_STALE,
+          message: "Workout template has been changed by another request",
+          status: :conflict
+        )
       end
     end
   end

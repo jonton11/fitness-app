@@ -44,15 +44,12 @@ module Api
 
         Time.zone.iso8601(session_payload[:started_at])
       rescue ArgumentError
-        render json: {
-          errors: [
-            {
-              field: "started_at",
-              code: "invalid",
-              message: "Started at must be an ISO-8601 timestamp"
-            }
-          ]
-        }, status: :unprocessable_content
+        render_api_error(
+          field: "started_at",
+          code: ERROR_CODE_INVALID,
+          message: "Started at must be an ISO-8601 timestamp",
+          status: :unprocessable_content
+        )
       end
 
       def serialize_session(session)
@@ -114,40 +111,17 @@ module Api
         }
       end
 
-      def serialize_time(value)
-        value&.utc&.iso8601(3)
-      end
-
-      def serialize_decimal(value)
-        value&.to_f
-      end
-
       def render_record_invalid(error)
         render_validation_errors(error.record)
       end
 
-      def render_validation_errors(record)
-        render json: {
-          errors: record.errors.map do |error|
-            {
-              field: error.attribute.to_s,
-              code: error.type.to_s,
-              message: error.full_message
-            }
-          end
-        }, status: :unprocessable_content
-      end
-
       def render_not_found(error)
-        render json: {
-          errors: [
-            {
-              field: not_found_field(error),
-              code: "not_found",
-              message: not_found_message(error)
-            }
-          ]
-        }, status: :not_found
+        render_api_error(
+          field: not_found_field(error),
+          code: ERROR_CODE_NOT_FOUND,
+          message: not_found_message(error),
+          status: :not_found
+        )
       end
 
       def not_found_field(error)
