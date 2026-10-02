@@ -25,10 +25,6 @@ class ApplicationController < ActionController::API
     value&.utc&.iso8601(3)
   end
 
-  def serialize_decimal(value)
-    value&.to_f
-  end
-
   def api_error(field, code, message)
     {
       field: field.to_s,
