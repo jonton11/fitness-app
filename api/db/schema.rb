@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_01_010000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_02_010000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -30,6 +30,84 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_010000) do
     t.check_constraint "load_type::text = ANY (ARRAY['lb'::character varying, 'kg'::character varying, 'machine_stack'::character varying, 'plate_count'::character varying, 'bodyweight'::character varying, 'bodyweight_plus_added'::character varying, 'assisted'::character varying, 'none'::character varying]::text[])", name: "exercises_load_type_valid"
     t.check_constraint "name::text <> ''::text", name: "exercises_name_present"
     t.check_constraint "primary_muscle_group::text <> ''::text", name: "exercises_primary_muscle_group_present"
+  end
+
+  create_table "workout_session_exercises", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "workout_session_id", null: false
+    t.uuid "workout_template_slot_id"
+    t.uuid "workout_template_exercise_option_id"
+    t.uuid "selected_exercise_id", null: false
+    t.integer "position", null: false
+    t.string "label", null: false
+    t.string "selected_exercise_name", null: false
+    t.string "selected_exercise_load_type", null: false
+    t.integer "rest_seconds", default: 180, null: false
+    t.decimal "planned_working_load_value", precision: 10, scale: 2
+    t.decimal "progression_increment", precision: 10, scale: 2
+    t.string "status", default: "pending", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["selected_exercise_id"], name: "index_workout_session_exercises_on_selected_exercise_id"
+    t.index ["workout_session_id", "position"], name: "index_session_exercises_on_session_and_position"
+    t.index ["workout_session_id"], name: "index_workout_session_exercises_on_workout_session_id"
+    t.index ["workout_template_exercise_option_id"], name: "idx_on_workout_template_exercise_option_id_8af7b4a1e9"
+    t.index ["workout_template_slot_id"], name: "index_workout_session_exercises_on_workout_template_slot_id"
+    t.check_constraint "\"position\" > 0", name: "workout_session_exercises_position_positive"
+    t.check_constraint "label::text <> ''::text", name: "workout_session_exercises_label_present"
+    t.check_constraint "planned_working_load_value IS NULL OR planned_working_load_value >= 0::numeric", name: "workout_session_exercises_planned_load_non_negative"
+    t.check_constraint "progression_increment IS NULL OR progression_increment >= 0::numeric", name: "workout_session_exercises_increment_non_negative"
+    t.check_constraint "rest_seconds >= 0", name: "workout_session_exercises_rest_seconds_non_negative"
+    t.check_constraint "selected_exercise_load_type::text = ANY (ARRAY['lb'::character varying, 'kg'::character varying, 'machine_stack'::character varying, 'plate_count'::character varying, 'bodyweight'::character varying, 'bodyweight_plus_added'::character varying, 'assisted'::character varying, 'none'::character varying]::text[])", name: "workout_session_exercises_load_type_valid"
+    t.check_constraint "selected_exercise_name::text <> ''::text", name: "workout_session_exercises_selected_name_present"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'completed'::character varying, 'skipped'::character varying]::text[])", name: "workout_session_exercises_status_valid"
+  end
+
+  create_table "workout_session_set_results", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "workout_session_exercise_id", null: false
+    t.uuid "workout_template_set_prescription_id"
+    t.integer "position", null: false
+    t.string "set_type", null: false
+    t.integer "target_rep_min", null: false
+    t.integer "target_rep_max", null: false
+    t.string "load_strategy", null: false
+    t.decimal "prescribed_load_value", precision: 10, scale: 2
+    t.decimal "planned_load_value", precision: 10, scale: 2
+    t.integer "actual_reps"
+    t.decimal "actual_load_value", precision: 10, scale: 2
+    t.string "completion_state", default: "pending", null: false
+    t.datetime "completed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["workout_session_exercise_id", "position"], name: "index_session_set_results_on_exercise_and_position"
+    t.index ["workout_session_exercise_id"], name: "idx_on_workout_session_exercise_id_b612df3782"
+    t.index ["workout_template_set_prescription_id"], name: "idx_on_workout_template_set_prescription_id_6d1d1ecc51"
+    t.check_constraint "\"position\" > 0", name: "workout_session_set_results_position_positive"
+    t.check_constraint "actual_load_value IS NULL OR actual_load_value >= 0::numeric", name: "workout_session_set_results_actual_load_non_negative"
+    t.check_constraint "actual_reps IS NULL OR actual_reps >= 0", name: "workout_session_set_results_actual_reps_non_negative"
+    t.check_constraint "completion_state::text = ANY (ARRAY['pending'::character varying, 'completed'::character varying, 'attempted_but_target_not_met'::character varying, 'not_performed'::character varying]::text[])", name: "workout_session_set_results_completion_state_valid"
+    t.check_constraint "load_strategy::text = ANY (ARRAY['working_load'::character varying, 'percentage_of_working_load'::character varying, 'explicit'::character varying, 'bodyweight'::character varying, 'none'::character varying]::text[])", name: "workout_session_set_results_load_strategy_valid"
+    t.check_constraint "planned_load_value IS NULL OR planned_load_value >= 0::numeric", name: "workout_session_set_results_planned_load_non_negative"
+    t.check_constraint "prescribed_load_value IS NULL OR prescribed_load_value >= 0::numeric", name: "workout_session_set_results_prescribed_load_non_negative"
+    t.check_constraint "set_type::text = ANY (ARRAY['warmup'::character varying, 'working'::character varying]::text[])", name: "workout_session_set_results_type_valid"
+    t.check_constraint "target_rep_max >= target_rep_min", name: "workout_session_set_results_rep_range_valid"
+    t.check_constraint "target_rep_min > 0", name: "workout_session_set_results_rep_min_positive"
+  end
+
+  create_table "workout_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "workout_template_id", null: false
+    t.string "workout_template_name", null: false
+    t.string "status", default: "active", null: false
+    t.datetime "started_at", null: false
+    t.datetime "completed_at"
+    t.datetime "canceled_at"
+    t.integer "lock_version", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["started_at"], name: "index_workout_sessions_on_started_at"
+    t.index ["status"], name: "index_workout_sessions_on_status"
+    t.index ["workout_template_id"], name: "index_workout_sessions_on_workout_template_id"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'completed'::character varying, 'canceled'::character varying]::text[])", name: "workout_sessions_status_valid"
+    t.check_constraint "workout_template_name::text <> ''::text", name: "workout_sessions_template_name_present"
   end
 
   create_table "workout_template_exercise_options", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -100,6 +178,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_010000) do
     t.check_constraint "name::text <> ''::text", name: "workout_templates_name_present"
   end
 
+  add_foreign_key "workout_session_exercises", "exercises", column: "selected_exercise_id"
+  add_foreign_key "workout_session_exercises", "workout_sessions", on_delete: :cascade
+  add_foreign_key "workout_session_exercises", "workout_template_exercise_options", on_delete: :nullify
+  add_foreign_key "workout_session_exercises", "workout_template_slots", on_delete: :nullify
+  add_foreign_key "workout_session_set_results", "workout_session_exercises", on_delete: :cascade
+  add_foreign_key "workout_session_set_results", "workout_template_set_prescriptions", on_delete: :nullify
+  add_foreign_key "workout_sessions", "workout_templates"
   add_foreign_key "workout_template_exercise_options", "exercises"
   add_foreign_key "workout_template_exercise_options", "workout_template_slots", on_delete: :cascade
   add_foreign_key "workout_template_set_prescriptions", "workout_template_slots", on_delete: :cascade
