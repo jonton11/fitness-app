@@ -38,28 +38,12 @@ module Api
           status: session_exercise.status,
           created_at: serialize_time(session_exercise.created_at),
           updated_at: serialize_time(session_exercise.updated_at),
-          set_results: session_exercise.set_results.sort_by(&:position).map { |set_result| serialize_set_result(set_result) }
+          workout_session_sets: session_exercise.workout_session_sets.sort_by(&:position).map { |workout_session_set| serialize_workout_session_set(workout_session_set) }
         }
       end
 
-      def serialize_set_result(set_result)
-        {
-          id: set_result.id,
-          workout_template_set_prescription_id: set_result.workout_template_set_prescription_id,
-          position: set_result.position,
-          set_type: set_result.set_type,
-          target_rep_min: set_result.target_rep_min,
-          target_rep_max: set_result.target_rep_max,
-          load_strategy: set_result.load_strategy,
-          prescribed_load_value: serialize_decimal(set_result.prescribed_load_value),
-          planned_load_value: serialize_decimal(set_result.planned_load_value),
-          actual_reps: set_result.actual_reps,
-          actual_load_value: serialize_decimal(set_result.actual_load_value),
-          completion_state: set_result.completion_state,
-          completed_at: serialize_time(set_result.completed_at),
-          created_at: serialize_time(set_result.created_at),
-          updated_at: serialize_time(set_result.updated_at)
-        }
+      def serialize_workout_session_set(workout_session_set)
+        WorkoutSessionSetSerializer.new(workout_session_set).as_json
       end
     end
   end

@@ -5,9 +5,9 @@ class WorkoutSessionExercise < ApplicationRecord
   belongs_to :workout_template_slot, optional: true
   belongs_to :workout_template_exercise_option, optional: true
   belongs_to :selected_exercise, class_name: "Exercise"
-  has_many :set_results,
+  has_many :workout_session_sets,
            -> { order(:position) },
-           class_name: "WorkoutSessionSetResult",
+           class_name: "WorkoutSessionSet",
            dependent: :destroy,
            inverse_of: :workout_session_exercise
 

@@ -21,8 +21,15 @@ class ApplicationController < ActionController::API
     }, status:
   end
 
-  def serialize_time(value)
-    value&.utc&.iso8601(3)
+  def render_resource(key, record, serializer:, status: :ok)
+    render json: { key => serialize_record(record, serializer:) }, status:
+  end
+
+  def render_collection(key, records, serializer:, meta: nil, status: :ok)
+    response_body = { key => records.map { |record| serialize_record(record, serializer:) } }
+    response_body[:meta] = meta if meta.present?
+
+    render json: response_body, status:
   end
 
   def api_error(field, code, message)
@@ -31,5 +38,9 @@ class ApplicationController < ActionController::API
       code: code.to_s,
       message:
     }
+  end
+
+  def serialize_record(record, serializer:)
+    serializer.new(record).as_json
   end
 end

@@ -1089,8 +1089,8 @@ POST   /api/v1/workout_sessions
 GET    /api/v1/workout_sessions/:id
 PATCH  /api/v1/workout_sessions/:id
 
-POST   /api/v1/set_results
-PATCH  /api/v1/set_results/:id
+POST   /api/v1/workout_session_sets
+PATCH  /api/v1/workout_session_sets/:id
 
 GET    /api/v1/routines
 POST   /api/v1/routines

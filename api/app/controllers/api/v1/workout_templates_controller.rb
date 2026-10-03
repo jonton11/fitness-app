@@ -12,14 +12,16 @@ module Api
         total = templates.count
         templates = templates.limit(limit).offset(offset)
 
-        render json: {
-          workout_templates: templates.map { |template| serialize_template(template) },
+        render_collection(
+          :workout_templates,
+          templates,
+          serializer: Api::V1::WorkoutTemplateSerializer,
           meta: { limit:, offset:, total: }
-        }
+        )
       end
 
       def show
-        render json: { workout_template: serialize_template(workout_template) }
+        render_resource(:workout_template, workout_template, serializer: Api::V1::WorkoutTemplateSerializer)
       end
 
       def create
@@ -28,7 +30,7 @@ module Api
           payload: template_payload
         )
 
-        render json: { workout_template: serialize_template(template) }, status: :created
+        render_resource(:workout_template, template, serializer: Api::V1::WorkoutTemplateSerializer, status: :created)
       end
 
       def update
@@ -37,7 +39,7 @@ module Api
           payload: template_payload
         )
 
-        render json: { workout_template: serialize_template(template) }
+        render_resource(:workout_template, template, serializer: Api::V1::WorkoutTemplateSerializer)
       end
 
       private
@@ -112,10 +114,6 @@ module Api
       def offset
         requested = params.fetch(:offset, 0).to_i
         [ requested, 0 ].max
-      end
-
-      def serialize_template(template)
-        Api::V1::WorkoutTemplateSerializer.new(template).as_json
       end
 
       def render_record_invalid(error)

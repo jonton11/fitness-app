@@ -11,21 +11,23 @@ module Api
         total = exercises.count
         exercises = exercises.limit(limit).offset(offset)
 
-        render json: {
-          exercises: exercises.map { |exercise| serialize_exercise(exercise) },
+        render_collection(
+          :exercises,
+          exercises,
+          serializer: Api::V1::ExerciseSerializer,
           meta: { limit:, offset:, total: }
-        }
+        )
       end
 
       def show
-        render json: { exercise: serialize_exercise(exercise) }
+        render_resource(:exercise, exercise, serializer: Api::V1::ExerciseSerializer)
       end
 
       def create
         exercise = Exercise.new(exercise_params)
 
         if exercise.save
-          render json: { exercise: serialize_exercise(exercise) }, status: :created
+          render_resource(:exercise, exercise, serializer: Api::V1::ExerciseSerializer, status: :created)
         else
           render_validation_errors(exercise)
         end
@@ -35,7 +37,7 @@ module Api
         exercise.assign_attributes(exercise_params)
 
         if exercise.save
-          render json: { exercise: serialize_exercise(exercise) }
+          render_resource(:exercise, exercise, serializer: Api::V1::ExerciseSerializer)
         else
           render_validation_errors(exercise)
         end
@@ -90,22 +92,6 @@ module Api
       def offset
         requested = params.fetch(:offset, 0).to_i
         [ requested, 0 ].max
-      end
-
-      def serialize_exercise(exercise)
-        {
-          id: exercise.id,
-          name: exercise.name,
-          primary_muscle_group: exercise.primary_muscle_group,
-          secondary_muscle_groups: exercise.secondary_muscle_groups,
-          load_type: exercise.load_type,
-          notes: exercise.notes,
-          external_url: exercise.external_url,
-          archived_at: serialize_time(exercise.archived_at),
-          created_at: serialize_time(exercise.created_at),
-          updated_at: serialize_time(exercise.updated_at),
-          lock_version: exercise.lock_version
-        }
       end
 
       def render_not_found

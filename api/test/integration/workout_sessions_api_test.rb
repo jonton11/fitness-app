@@ -6,7 +6,7 @@ class WorkoutSessionsApiTest < ActionDispatch::IntegrationTest
 
     assert_difference -> { WorkoutSession.count }, 1 do
       assert_difference -> { WorkoutSessionExercise.count }, 1 do
-        assert_difference -> { WorkoutSessionSetResult.count }, 2 do
+        assert_difference -> { WorkoutSessionSet.count }, 2 do
           post "/api/v1/workout_sessions", params: {
             workout_session: {
               workout_template_id: template.id,
@@ -35,7 +35,7 @@ class WorkoutSessionsApiTest < ActionDispatch::IntegrationTest
     assert_equal 5.0, exercise.fetch("progression_increment")
     assert_equal "pending", exercise.fetch("status")
 
-    warmup, working = exercise.fetch("set_results")
+    warmup, working = exercise.fetch("workout_session_sets")
     assert_equal "warmup", warmup.fetch("set_type")
     assert_equal "percentage_of_working_load", warmup.fetch("load_strategy")
     assert_equal 50.0, warmup.fetch("prescribed_load_value")
@@ -73,7 +73,7 @@ class WorkoutSessionsApiTest < ActionDispatch::IntegrationTest
     assert_response :success
     body = response.parsed_body.fetch("workout_session")
     exercise = body.fetch("exercises").first
-    warmup = exercise.fetch("set_results").first
+    warmup = exercise.fetch("workout_session_sets").first
 
     assert_equal "Upper Body", body.fetch("workout_template_name")
     assert_equal "Upper Chest Press", exercise.fetch("label")

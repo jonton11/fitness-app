@@ -6,7 +6,7 @@ class WorkoutSessionTest < ActiveSupport::TestCase
 
     assert_difference -> { WorkoutSession.count }, 1 do
       assert_difference -> { WorkoutSessionExercise.count }, 1 do
-        assert_difference -> { WorkoutSessionSetResult.count }, 2 do
+        assert_difference -> { WorkoutSessionSet.count }, 2 do
           WorkoutSessions::Start.call(workout_template: template, started_at: Time.zone.parse("2026-10-02 12:00:00"))
         end
       end
@@ -28,7 +28,7 @@ class WorkoutSessionTest < ActiveSupport::TestCase
     assert_equal BigDecimal("5"), session_exercise.progression_increment
     assert_equal "pending", session_exercise.status
 
-    warmup, working = session_exercise.set_results.to_a
+    warmup, working = session_exercise.workout_session_sets.to_a
     assert_equal "warmup", warmup.set_type
     assert_equal 4, warmup.target_rep_min
     assert_equal 6, warmup.target_rep_max
@@ -45,7 +45,7 @@ class WorkoutSessionTest < ActiveSupport::TestCase
     template = create_template
     session = WorkoutSessions::Start.call(workout_template: template)
     session_exercise = session.exercises.first
-    warmup = session_exercise.set_results.first
+    warmup = session_exercise.workout_session_sets.first
 
     template.update!(name: "Renamed Upper")
     template.slots.first.update!(label: "Changed Slot", rest_seconds: 90)
@@ -73,18 +73,31 @@ class WorkoutSessionTest < ActiveSupport::TestCase
     template = create_template
     session = WorkoutSessions::Start.call(workout_template: template)
     session_exercise = session.exercises.first
-    set_result = session_exercise.set_results.first
+    workout_session_set = session_exercise.workout_session_sets.first
 
     template.slots.first.destroy!
 
     session_exercise.reload
-    set_result.reload
+    workout_session_set.reload
 
     assert_nil session_exercise.workout_template_slot
     assert_nil session_exercise.workout_template_exercise_option
-    assert_nil set_result.workout_template_set_prescription
+    assert_nil workout_session_set.workout_template_set_prescription
     assert_equal "Upper Chest Press", session_exercise.label
-    assert_equal "warmup", set_result.set_type
+    assert_equal "warmup", workout_session_set.set_type
+  end
+
+  test "database enforces workout session set actual fields matching completion state" do
+    session = WorkoutSessions::Start.call(workout_template: create_template)
+    workout_session_set = session.exercises.first.workout_session_sets.first
+
+    error = assert_raises(ActiveRecord::StatementInvalid) do
+      WorkoutSessionSet.transaction(requires_new: true) do
+        WorkoutSessionSet.where(id: workout_session_set.id).update_all(actual_reps: 4)
+      end
+    end
+
+    assert_match "workout_session_sets_actuals_match_completion_state", error.message
   end
 
   test "validates workout session snapshot fields" do
@@ -105,7 +118,7 @@ class WorkoutSessionTest < ActiveSupport::TestCase
       progression_increment: -2.5,
       status: "done"
     )
-    set_result = WorkoutSessionSetResult.new(
+    workout_session_set = WorkoutSessionSet.new(
       workout_session_exercise: session_exercise,
       position: 0,
       set_type: "drop",
@@ -134,16 +147,16 @@ class WorkoutSessionTest < ActiveSupport::TestCase
     assert_includes session_exercise.errors[:progression_increment], "must be greater than or equal to 0"
     assert_includes session_exercise.errors[:status], "is not included in the list"
 
-    assert_not set_result.valid?
-    assert_includes set_result.errors[:position], "must be greater than 0"
-    assert_includes set_result.errors[:set_type], "is not included in the list"
-    assert_includes set_result.errors[:target_rep_max], "must be greater than or equal to target rep min"
-    assert_includes set_result.errors[:load_strategy], "is not included in the list"
-    assert_includes set_result.errors[:prescribed_load_value], "must be greater than or equal to 0"
-    assert_includes set_result.errors[:planned_load_value], "must be greater than or equal to 0"
-    assert_includes set_result.errors[:actual_reps], "must be greater than or equal to 0"
-    assert_includes set_result.errors[:actual_load_value], "must be greater than or equal to 0"
-    assert_includes set_result.errors[:completion_state], "is not included in the list"
+    assert_not workout_session_set.valid?
+    assert_includes workout_session_set.errors[:position], "must be greater than 0"
+    assert_includes workout_session_set.errors[:set_type], "is not included in the list"
+    assert_includes workout_session_set.errors[:target_rep_max], "must be greater than or equal to target rep min"
+    assert_includes workout_session_set.errors[:load_strategy], "is not included in the list"
+    assert_includes workout_session_set.errors[:prescribed_load_value], "must be greater than or equal to 0"
+    assert_includes workout_session_set.errors[:planned_load_value], "must be greater than or equal to 0"
+    assert_includes workout_session_set.errors[:actual_reps], "must be greater than or equal to 0"
+    assert_includes workout_session_set.errors[:actual_load_value], "must be greater than or equal to 0"
+    assert_includes workout_session_set.errors[:completion_state], "is not included in the list"
   end
 
   private

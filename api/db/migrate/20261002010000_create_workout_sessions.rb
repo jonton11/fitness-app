@@ -29,7 +29,7 @@ class CreateWorkoutSessions < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    create_table :workout_session_set_results, id: :uuid do |t|
+    create_table :workout_session_sets, id: :uuid do |t|
       t.references :workout_session_exercise, null: false, foreign_key: { on_delete: :cascade }, type: :uuid
       t.references :workout_template_set_prescription, foreign_key: { on_delete: :nullify }, type: :uuid
       t.integer :position, null: false
@@ -43,6 +43,7 @@ class CreateWorkoutSessions < ActiveRecord::Migration[8.1]
       t.decimal :actual_load_value, precision: 10, scale: 2
       t.string :completion_state, null: false, default: "pending"
       t.datetime :completed_at
+      t.integer :lock_version, null: false, default: 0
 
       t.timestamps
     end
@@ -50,9 +51,9 @@ class CreateWorkoutSessions < ActiveRecord::Migration[8.1]
     add_index :workout_sessions, :status
     add_index :workout_sessions, :started_at
     add_index :workout_session_exercises, %i[workout_session_id position], name: "index_session_exercises_on_session_and_position"
-    add_index :workout_session_set_results,
+    add_index :workout_session_sets,
               %i[workout_session_exercise_id position],
-              name: "index_session_set_results_on_exercise_and_position"
+              name: "index_session_sets_on_exercise_and_position"
 
     add_check_constraint :workout_sessions, "workout_template_name <> ''", name: "workout_sessions_template_name_present"
     add_check_constraint :workout_sessions,
@@ -78,35 +79,44 @@ class CreateWorkoutSessions < ActiveRecord::Migration[8.1]
     add_check_constraint :workout_session_exercises,
                          "status IN ('pending', 'completed', 'skipped')",
                          name: "workout_session_exercises_status_valid"
-    add_check_constraint :workout_session_set_results,
+    add_check_constraint :workout_session_sets,
                          "position > 0",
-                         name: "workout_session_set_results_position_positive"
-    add_check_constraint :workout_session_set_results,
+                         name: "workout_session_sets_position_positive"
+    add_check_constraint :workout_session_sets,
                          "set_type IN ('warmup', 'working')",
-                         name: "workout_session_set_results_type_valid"
-    add_check_constraint :workout_session_set_results,
+                         name: "workout_session_sets_type_valid"
+    add_check_constraint :workout_session_sets,
                          "target_rep_min > 0",
-                         name: "workout_session_set_results_rep_min_positive"
-    add_check_constraint :workout_session_set_results,
+                         name: "workout_session_sets_rep_min_positive"
+    add_check_constraint :workout_session_sets,
                          "target_rep_max >= target_rep_min",
-                         name: "workout_session_set_results_rep_range_valid"
-    add_check_constraint :workout_session_set_results,
+                         name: "workout_session_sets_rep_range_valid"
+    add_check_constraint :workout_session_sets,
                          "load_strategy IN ('working_load', 'percentage_of_working_load', 'explicit', 'bodyweight', 'none')",
-                         name: "workout_session_set_results_load_strategy_valid"
-    add_check_constraint :workout_session_set_results,
+                         name: "workout_session_sets_load_strategy_valid"
+    add_check_constraint :workout_session_sets,
                          "prescribed_load_value IS NULL OR prescribed_load_value >= 0",
-                         name: "workout_session_set_results_prescribed_load_non_negative"
-    add_check_constraint :workout_session_set_results,
+                         name: "workout_session_sets_prescribed_load_non_negative"
+    add_check_constraint :workout_session_sets,
                          "planned_load_value IS NULL OR planned_load_value >= 0",
-                         name: "workout_session_set_results_planned_load_non_negative"
-    add_check_constraint :workout_session_set_results,
+                         name: "workout_session_sets_planned_load_non_negative"
+    add_check_constraint :workout_session_sets,
                          "actual_reps IS NULL OR actual_reps >= 0",
-                         name: "workout_session_set_results_actual_reps_non_negative"
-    add_check_constraint :workout_session_set_results,
+                         name: "workout_session_sets_actual_reps_non_negative"
+    add_check_constraint :workout_session_sets,
                          "actual_load_value IS NULL OR actual_load_value >= 0",
-                         name: "workout_session_set_results_actual_load_non_negative"
-    add_check_constraint :workout_session_set_results,
+                         name: "workout_session_sets_actual_load_non_negative"
+    add_check_constraint :workout_session_sets,
                          "completion_state IN ('pending', 'completed', 'attempted_but_target_not_met', 'not_performed')",
-                         name: "workout_session_set_results_completion_state_valid"
+                         name: "workout_session_sets_completion_state_valid"
+    add_check_constraint :workout_session_sets,
+                         "(completion_state IN ('completed', 'attempted_but_target_not_met') " \
+                         "AND actual_reps IS NOT NULL " \
+                         "AND completed_at IS NOT NULL) " \
+                         "OR (completion_state IN ('pending', 'not_performed') " \
+                         "AND actual_reps IS NULL " \
+                         "AND actual_load_value IS NULL " \
+                         "AND completed_at IS NULL)",
+                         name: "workout_session_sets_actuals_match_completion_state"
   end
 end
