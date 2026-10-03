@@ -22,6 +22,11 @@
 		0A0000010000000000000019 /* WorkoutTemplatesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000019 /* WorkoutTemplatesViewModel.swift */; };
 		0A000001000000000000001A /* WorkoutTemplateFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A000002000000000000001A /* WorkoutTemplateFormView.swift */; };
 		0A000001000000000000001B /* WorkoutTemplatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A000002000000000000001B /* WorkoutTemplatesView.swift */; };
+		0A0000010000000000000020 /* WorkoutSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000020 /* WorkoutSession.swift */; };
+		0A0000010000000000000021 /* WorkoutSessionAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000021 /* WorkoutSessionAPIClient.swift */; };
+		0A0000010000000000000022 /* ActiveWorkoutStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000022 /* ActiveWorkoutStore.swift */; };
+		0A0000010000000000000023 /* ActiveWorkoutViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000023 /* ActiveWorkoutViewModel.swift */; };
+		0A0000010000000000000024 /* ActiveWorkoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000024 /* ActiveWorkoutView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -52,6 +57,11 @@
 		0A0000020000000000000019 /* WorkoutTemplatesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTemplatesViewModel.swift; sourceTree = "<group>"; };
 		0A000002000000000000001A /* WorkoutTemplateFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTemplateFormView.swift; sourceTree = "<group>"; };
 		0A000002000000000000001B /* WorkoutTemplatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTemplatesView.swift; sourceTree = "<group>"; };
+		0A0000020000000000000020 /* WorkoutSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSession.swift; sourceTree = "<group>"; };
+		0A0000020000000000000021 /* WorkoutSessionAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSessionAPIClient.swift; sourceTree = "<group>"; };
+		0A0000020000000000000022 /* ActiveWorkoutStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutStore.swift; sourceTree = "<group>"; };
+		0A0000020000000000000023 /* ActiveWorkoutViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutViewModel.swift; sourceTree = "<group>"; };
+		0A0000020000000000000024 /* ActiveWorkoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -115,6 +125,7 @@
 			children = (
 				0A0000020000000000000010 /* Exercise.swift */,
 				0A0000020000000000000016 /* WorkoutTemplate.swift */,
+				0A0000020000000000000020 /* WorkoutSession.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -123,6 +134,7 @@
 			isa = PBXGroup;
 			children = (
 				0A0000070000000000000012 /* API */,
+				0A0000070000000000000016 /* Local */,
 			);
 			path = Data;
 			sourceTree = "<group>";
@@ -132,8 +144,17 @@
 			children = (
 				0A0000020000000000000011 /* ExerciseAPIClient.swift */,
 				0A0000020000000000000017 /* WorkoutTemplateAPIClient.swift */,
+				0A0000020000000000000021 /* WorkoutSessionAPIClient.swift */,
 			);
 			path = API;
+			sourceTree = "<group>";
+		};
+		0A0000070000000000000016 /* Local */ = {
+			isa = PBXGroup;
+			children = (
+				0A0000020000000000000022 /* ActiveWorkoutStore.swift */,
+			);
+			path = Local;
 			sourceTree = "<group>";
 		};
 		0A0000070000000000000013 /* Features */ = {
@@ -141,6 +162,7 @@
 			children = (
 				0A0000070000000000000014 /* Exercises */,
 				0A0000070000000000000015 /* WorkoutTemplates */,
+				0A0000070000000000000017 /* ActiveWorkout */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -165,6 +187,15 @@
 				0A000002000000000000001B /* WorkoutTemplatesView.swift */,
 			);
 			path = WorkoutTemplates;
+			sourceTree = "<group>";
+		};
+		0A0000070000000000000017 /* ActiveWorkout */ = {
+			isa = PBXGroup;
+			children = (
+				0A0000020000000000000023 /* ActiveWorkoutViewModel.swift */,
+				0A0000020000000000000024 /* ActiveWorkoutView.swift */,
+			);
+			path = ActiveWorkout;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -274,11 +305,16 @@
 				0A0000010000000000000014 /* ExerciseFormView.swift in Sources */,
 				0A0000010000000000000015 /* ExercisesView.swift in Sources */,
 				0A0000010000000000000016 /* WorkoutTemplate.swift in Sources */,
+				0A0000010000000000000020 /* WorkoutSession.swift in Sources */,
 				0A0000010000000000000017 /* WorkoutTemplateAPIClient.swift in Sources */,
+				0A0000010000000000000021 /* WorkoutSessionAPIClient.swift in Sources */,
+				0A0000010000000000000022 /* ActiveWorkoutStore.swift in Sources */,
 				0A0000010000000000000018 /* WorkoutTemplateFormState.swift in Sources */,
 				0A0000010000000000000019 /* WorkoutTemplatesViewModel.swift in Sources */,
 				0A000001000000000000001A /* WorkoutTemplateFormView.swift in Sources */,
 				0A000001000000000000001B /* WorkoutTemplatesView.swift in Sources */,
+				0A0000010000000000000023 /* ActiveWorkoutViewModel.swift in Sources */,
+				0A0000010000000000000024 /* ActiveWorkoutView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
