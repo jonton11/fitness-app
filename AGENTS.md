@@ -19,12 +19,16 @@ client for a personal fitness tracker.
 - Use existing local patterns before adding new abstractions or dependencies.
 - Prefer durable guardrails over prompt-only expectations: encode repeatable
   checks in tests, types, lint rules, database constraints, or CI where possible.
+- When review guidance changes, add or update a scenario in
+  `docs/AGENT_REVIEW_EVALS.md` so the expected reviewer behavior can be checked
+  repeatably.
 
 ## Verification
 
 - Rails API: `cd api && asdf exec bundle exec rails test`
 - Rails style: `cd api && env RUBOCOP_CACHE_ROOT=tmp/rubocop_cache asdf exec bundle exec rubocop`
 - Rails security: `cd api && asdf exec bundle exec brakeman --no-pager`
+- Rails migrations: when migrations change, run `cd api && env RAILS_ENV=test asdf exec bundle exec rails db:migrate db:rollback db:migrate`
 - Web: `cd web && npm run lint && npm run format && npm run test && npm run build`
 - iOS: `cd ios && env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project FitnessApp.xcodeproj -scheme FitnessApp -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build-for-testing`
 
@@ -48,6 +52,9 @@ client for a personal fitness tracker.
 
 - Prioritize correctness, data loss, security, concurrency, migrations, and
   missing tests over style preferences.
+- Review migrations on both behavior and Rails fit: prefer reversible,
+  framework-native Active Record migration APIs, and flag raw SQL or hand-managed
+  schema mechanics when Rails conventions cover the change.
 - Findings should be actionable and tied to specific changed lines.
 - Do not flag purely cosmetic issues when RuboCop, formatters, or compiler
   checks already cover them.
