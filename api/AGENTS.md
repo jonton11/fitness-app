@@ -13,6 +13,15 @@ These rules apply to the Rails API under `api/`.
 - Use strong parameters for all client-controlled attributes.
 - Keep validations close to the model and mirror critical database invariants
   with check constraints where practical.
+- Prefer Active Record migration helpers such as `rename_table`,
+  `rename_column`, `add_check_constraint`, `remove_check_constraint`,
+  `add_index`, and `remove_index` over raw SQL. Use raw SQL only when Rails does
+  not expose the needed database behavior, and make that reason clear in the
+  migration.
+- Keep migrations reversible with `change` when Rails can infer the inverse, or
+  with symmetric `up`/`down` methods when it cannot. Avoid hand-renaming or
+  over-specifying generated indexes and constraints unless a stable database
+  object name is part of the app contract.
 - Preserve optimistic locking behavior on mutable resources where the API already
   exposes `lock_version` and handles `ActiveRecord::StaleObjectError`.
 - Avoid `update_all`, `delete_all`, and validation-skipping persistence unless
@@ -24,6 +33,9 @@ These rules apply to the Rails API under `api/`.
   not-found errors, and stale object conflicts when locking applies.
 - Cover service objects with focused unit tests for state transitions and edge
   cases.
+- For migration changes, verify both directions in test or development using
+  `env RAILS_ENV=test asdf exec bundle exec rails db:migrate db:rollback db:migrate`
+  when local database access is available.
 - Prefer realistic Active Record records over heavy mocking for persistence
   behavior.
 
@@ -45,6 +57,9 @@ These rules apply to the Rails API under `api/`.
   especially for workout history, completion state, ownership, or ordering.
 - Flag migrations that add constraints or non-null columns without accounting
   for existing rows and rollback/deploy safety.
+- Flag migrations that use raw SQL, adapter-specific DDL, or hand-managed
+  constraint/index renames when the same change can be expressed with clear
+  Active Record migration helpers.
 - Flag validations whose blank/present behavior mishandles valid zero values.
 - Flag uniqueness validations that are not backed by a matching unique index
   when duplicates would corrupt user-visible data.
