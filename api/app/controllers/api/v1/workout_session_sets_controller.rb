@@ -14,7 +14,11 @@ module Api
           attributes:
         )
 
-        render json: { workout_session_set: serialize_workout_session_set(updated_workout_session_set) }
+        render_resource(
+          :workout_session_set,
+          updated_workout_session_set,
+          serializer: Api::V1::WorkoutSessionSetSerializer
+        )
       end
 
       private
@@ -50,10 +54,6 @@ module Api
           message: "Completed at must be an ISO-8601 timestamp",
           status: :unprocessable_content
         )
-      end
-
-      def serialize_workout_session_set(workout_session_set)
-        Api::V1::WorkoutSessionSetSerializer.new(workout_session_set).as_json
       end
 
       def render_record_invalid(error)

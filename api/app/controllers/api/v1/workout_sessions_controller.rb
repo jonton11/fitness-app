@@ -13,11 +13,11 @@ module Api
           started_at:
         )
 
-        render json: { workout_session: serialize_session(session.reload) }, status: :created
+        render_resource(:workout_session, session.reload, serializer: Api::V1::WorkoutSessionSerializer, status: :created)
       end
 
       def show
-        render json: { workout_session: serialize_session(workout_session) }
+        render_resource(:workout_session, workout_session, serializer: Api::V1::WorkoutSessionSerializer)
       end
 
       private
@@ -50,10 +50,6 @@ module Api
           message: "Started at must be an ISO-8601 timestamp",
           status: :unprocessable_content
         )
-      end
-
-      def serialize_session(session)
-        Api::V1::WorkoutSessionSerializer.new(session).as_json
       end
 
       def render_record_invalid(error)
