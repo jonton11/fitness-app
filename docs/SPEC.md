@@ -1569,6 +1569,10 @@ Use pull requests even for solo development where practical.
 
 Squash-merging the feature PR into `main` is acceptable, but the branch itself should still be built as a coherent sequence while work is in progress.
 
+### Pull request descriptions
+
+Pull requests that change user-facing UI must include screenshots showing the changed screen or state.
+
 ---
 
 ## 39. Testing Strategy
