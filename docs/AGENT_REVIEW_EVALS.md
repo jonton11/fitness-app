@@ -57,3 +57,22 @@ Expected catch:
 
 - The review flags the unversioned response shape change unless all clients and
   contract documentation are updated or a compatibility alias is kept.
+
+## Clean Follow-Up Review Comment Eval
+
+Temporary diff idea:
+
+- Start with a PR that previously had an inline review finding.
+- Apply a follow-up commit that clearly fixes the finding and adds a focused
+  regression test.
+- Leave no remaining actionable review issues in the diff.
+
+Expected catch:
+
+- The review does not invent a new issue.
+- The reviewer leaves a non-inline GitHub review comment stating that no
+  actionable issues remain and includes the reviewed head SHA plus verification
+  results.
+- If a relevant verification command cannot run because of local environment
+  state, the review comment names that command and the blocker instead of
+  treating it as a code defect.
