@@ -2019,6 +2019,14 @@ Acceptance:
 - production survives Windows reboot;
 - iPhone can sync remotely over private network.
 
+### Post-MVE follow-up — Agent review evals
+
+After the MVE is complete and deployed, revisit agent review evals.
+
+Decide whether the lightweight review canaries should remain as documentation or
+graduate into a more structured eval system with reusable fixture patches,
+organic prompts, pass/fail criteria, and result records.
+
 ---
 
 ## 49. Definition of Done for a Feature
