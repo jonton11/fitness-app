@@ -56,21 +56,25 @@ struct ActiveWorkoutStore: Sendable {
 struct ActiveWorkoutState: Codable, Equatable {
     var session: WorkoutSession
     var pendingSetUpdates: [PendingWorkoutSessionSetUpdate]
+    var pendingSessionCompletion: PendingWorkoutSessionCompletion?
     var syncIssues: [WorkoutSessionSetSyncIssue]
 
     init(
         session: WorkoutSession,
         pendingSetUpdates: [PendingWorkoutSessionSetUpdate] = [],
+        pendingSessionCompletion: PendingWorkoutSessionCompletion? = nil,
         syncIssues: [WorkoutSessionSetSyncIssue] = []
     ) {
         self.session = session
         self.pendingSetUpdates = pendingSetUpdates
+        self.pendingSessionCompletion = pendingSessionCompletion
         self.syncIssues = syncIssues
     }
 
     enum CodingKeys: String, CodingKey {
         case session
         case pendingSetUpdates = "pending_set_updates"
+        case pendingSessionCompletion = "pending_session_completion"
         case syncIssues = "sync_issues"
     }
 
@@ -82,6 +86,10 @@ struct ActiveWorkoutState: Codable, Equatable {
             [PendingWorkoutSessionSetUpdate].self,
             forKey: .pendingSetUpdates
         ) ?? []
+        pendingSessionCompletion = try container.decodeIfPresent(
+            PendingWorkoutSessionCompletion.self,
+            forKey: .pendingSessionCompletion
+        )
         syncIssues = try container.decodeIfPresent(
             [WorkoutSessionSetSyncIssue].self,
             forKey: .syncIssues
@@ -99,6 +107,20 @@ struct PendingWorkoutSessionSetUpdate: Codable, Equatable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case setID = "set_id"
+        case payload
+    }
+}
+
+struct PendingWorkoutSessionCompletion: Codable, Equatable, Identifiable {
+    var sessionID: UUID
+    var payload: WorkoutSessionFinishPayload
+
+    var id: UUID {
+        sessionID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case sessionID = "session_id"
         case payload
     }
 }

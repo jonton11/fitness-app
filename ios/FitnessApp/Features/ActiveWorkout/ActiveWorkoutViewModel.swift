@@ -13,11 +13,17 @@ final class ActiveWorkoutViewModel: ObservableObject {
 
     private let store: ActiveWorkoutStore
     private let getWorkoutSession: (UUID) async throws -> WorkoutSession
+    private let finishWorkoutSession: (UUID, WorkoutSessionFinishPayload) async throws -> WorkoutSession
     private let updateWorkoutSessionSet: (UUID, WorkoutSessionSetUpdatePayload) async throws -> WorkoutSessionSet
     private let now: () -> Date
     private var pendingSetUpdates: [PendingWorkoutSessionSetUpdate] = [] {
         didSet {
-            pendingSyncCount = pendingSetUpdates.count
+            refreshPendingSyncCount()
+        }
+    }
+    private var pendingSessionCompletion: PendingWorkoutSessionCompletion? {
+        didSet {
+            refreshPendingSyncCount()
         }
     }
     private var syncIssues: [WorkoutSessionSetSyncIssue] = [] {
@@ -33,6 +39,9 @@ final class ActiveWorkoutViewModel: ObservableObject {
         getWorkoutSession: @escaping (UUID) async throws -> WorkoutSession = { id in
             try await WorkoutSessionAPIClient.live.getWorkoutSession(id: id)
         },
+        finishWorkoutSession: @escaping (UUID, WorkoutSessionFinishPayload) async throws -> WorkoutSession = { id, payload in
+            try await WorkoutSessionAPIClient.live.finishWorkoutSession(id: id, payload: payload)
+        },
         updateWorkoutSessionSet: @escaping (UUID, WorkoutSessionSetUpdatePayload) async throws -> WorkoutSessionSet = { id, payload in
             try await WorkoutSessionAPIClient.live.updateWorkoutSessionSet(id: id, payload: payload)
         }
@@ -40,13 +49,15 @@ final class ActiveWorkoutViewModel: ObservableObject {
         self.session = session
         self.store = store
         self.getWorkoutSession = getWorkoutSession
+        self.finishWorkoutSession = finishWorkoutSession
         self.updateWorkoutSessionSet = updateWorkoutSessionSet
         self.now = now
 
         if let state = try? store.load(), state.session.id == session.id {
             self.session = state.session
             pendingSetUpdates = state.pendingSetUpdates
-            pendingSyncCount = state.pendingSetUpdates.count
+            pendingSessionCompletion = state.pendingSessionCompletion
+            refreshPendingSyncCount()
             syncIssues = state.syncIssues
             syncIssueCount = state.syncIssues.count
         } else {
@@ -151,9 +162,55 @@ final class ActiveWorkoutViewModel: ObservableObject {
         syncIssues = updatedSyncIssues
         restEndsAt = completedAt.addingTimeInterval(TimeInterval(updatedSession.exercises[exerciseIndex].restSeconds))
         prepareDraftForCurrentSet()
-        await retryPendingSetUpdates()
+        await retryPendingSync()
 
         return true
+    }
+
+    func finishWorkout() async -> Bool {
+        errorMessage = nil
+
+        let finishedAt = now()
+        let completedAtTimestamp = finishedAt.apiTimestamp
+        let updatedSession = session.finishingIncompleteWorkout(completedAt: completedAtTimestamp)
+        let pendingCompletion = PendingWorkoutSessionCompletion(
+            sessionID: updatedSession.id,
+            payload: WorkoutSessionFinishPayload(
+                status: .completed,
+                completedAt: completedAtTimestamp,
+                lockVersion: session.lockVersion
+            )
+        )
+
+        do {
+            try store.save(
+                ActiveWorkoutState(
+                    session: updatedSession,
+                    pendingSetUpdates: pendingSetUpdates,
+                    pendingSessionCompletion: pendingCompletion,
+                    syncIssues: syncIssues
+                )
+            )
+        } catch {
+            errorMessage = "Could not finish workout."
+            return false
+        }
+
+        session = updatedSession
+        pendingSessionCompletion = pendingCompletion
+        prepareDraftForCurrentSet()
+        await retryPendingSync()
+        return true
+    }
+
+    func retryPendingSync() async {
+        await retryPendingSetUpdates()
+
+        guard pendingSetUpdates.isEmpty else {
+            return
+        }
+
+        await retryPendingSessionCompletion()
     }
 
     func retryPendingSetUpdates() async {
@@ -229,6 +286,44 @@ final class ActiveWorkoutViewModel: ObservableObject {
         }
     }
 
+    func retryPendingSessionCompletion() async {
+        guard let pendingSessionCompletion else {
+            return
+        }
+
+        do {
+            let syncedSession = try await finishWorkoutSession(
+                pendingSessionCompletion.sessionID,
+                pendingSessionCompletion.payload
+            )
+
+            try store.save(
+                ActiveWorkoutState(
+                    session: syncedSession,
+                    pendingSetUpdates: pendingSetUpdates,
+                    syncIssues: syncIssues
+                )
+            )
+
+            session = syncedSession
+            self.pendingSessionCompletion = nil
+            prepareDraftForCurrentSet()
+
+            if pendingSetUpdates.isEmpty && syncIssues.isEmpty {
+                do {
+                    try store.clear()
+                } catch {
+                    errorMessage = "Could not clear active workout."
+                    return
+                }
+            }
+
+            errorMessage = nil
+        } catch {
+            errorMessage = "Workout saved locally. Finish sync pending."
+        }
+    }
+
     func completedSetCount(for exercise: WorkoutSessionExercise) -> Int {
         exercise.workoutSessionSets.filter { $0.completionState != .pending }.count
     }
@@ -260,6 +355,10 @@ final class ActiveWorkoutViewModel: ObservableObject {
 
     private func completionState(actualReps: Int, targetRepMin: Int) -> WorkoutSessionSetCompletionState {
         actualReps >= targetRepMin ? .completed : .attemptedButTargetNotMet
+    }
+
+    private func refreshPendingSyncCount() {
+        pendingSyncCount = pendingSetUpdates.count + (pendingSessionCompletion == nil ? 0 : 1)
     }
 
     private func syncPendingSetUpdate(_ pendingUpdate: PendingWorkoutSessionSetUpdate) async throws -> WorkoutSessionSet {
@@ -387,6 +486,30 @@ private extension WorkoutSession {
 
             updatedSession.exercises[exerciseIndex].workoutSessionSets[setIndex] = syncedSet
             return updatedSession
+        }
+
+        return updatedSession
+    }
+
+    func finishingIncompleteWorkout(completedAt: String) -> WorkoutSession {
+        var updatedSession = self
+        updatedSession.status = .completed
+        updatedSession.completedAt = completedAt
+        updatedSession.canceledAt = nil
+
+        for exerciseIndex in updatedSession.exercises.indices {
+            for setIndex in updatedSession.exercises[exerciseIndex].workoutSessionSets.indices {
+                guard updatedSession.exercises[exerciseIndex].workoutSessionSets[setIndex].completionState == .pending else {
+                    continue
+                }
+
+                updatedSession.exercises[exerciseIndex].workoutSessionSets[setIndex].actualReps = nil
+                updatedSession.exercises[exerciseIndex].workoutSessionSets[setIndex].actualLoadValue = nil
+                updatedSession.exercises[exerciseIndex].workoutSessionSets[setIndex].completionState = .notPerformed
+                updatedSession.exercises[exerciseIndex].workoutSessionSets[setIndex].completedAt = nil
+            }
+
+            updatedSession.exercises[exerciseIndex].status = updatedSession.exercises[exerciseIndex].workoutSessionSets.contains { $0.completionState.isPerformed } ? .completed : .skipped
         }
 
         return updatedSession
