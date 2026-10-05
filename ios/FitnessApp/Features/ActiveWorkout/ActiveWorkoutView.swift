@@ -23,7 +23,7 @@ struct ActiveWorkoutView: View {
 
             if viewModel.pendingSyncCount > 0 {
                 Section {
-                    Label("\(viewModel.pendingSyncCount) set \(viewModel.pendingSyncCount == 1 ? "sync" : "syncs") pending", systemImage: "arrow.triangle.2.circlepath")
+                    Label("\(viewModel.pendingSyncCount) \(viewModel.pendingSyncCount == 1 ? "sync" : "syncs") pending", systemImage: "arrow.triangle.2.circlepath")
                         .foregroundStyle(.orange)
                 }
             }
@@ -57,8 +57,25 @@ struct ActiveWorkoutView: View {
         }
         .navigationTitle("Active Workout")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button {
+                        Task {
+                            _ = await viewModel.finishWorkout()
+                        }
+                    } label: {
+                        Label("Finish Workout", systemImage: "checkmark.circle")
+                    }
+                    .disabled(viewModel.session.status == .completed)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .accessibilityLabel("Workout Actions")
+            }
+        }
         .task {
-            await viewModel.retryPendingSetUpdates()
+            await viewModel.retryPendingSync()
         }
     }
 

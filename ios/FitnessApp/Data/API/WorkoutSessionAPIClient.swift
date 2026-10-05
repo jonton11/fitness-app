@@ -43,6 +43,16 @@ struct WorkoutSessionAPIClient {
         return envelope.workoutSessionSet
     }
 
+    func finishWorkoutSession(id: UUID, payload: WorkoutSessionFinishPayload) async throws -> WorkoutSession {
+        let envelope: WorkoutSessionEnvelope = try await request(
+            path: "/api/v1/workout_sessions/\(id.uuidString)",
+            method: "PATCH",
+            body: WorkoutSessionRequestEnvelope(workoutSession: payload)
+        )
+
+        return envelope.workoutSession
+    }
+
     private func request<Response: Decodable, Body: Encodable>(
         path: String,
         method: String,
@@ -102,6 +112,18 @@ struct WorkoutSessionSetUpdatePayload: Codable, Equatable {
     }
 }
 
+struct WorkoutSessionFinishPayload: Codable, Equatable {
+    var status: WorkoutSessionStatus
+    var completedAt: String
+    var lockVersion: Int
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case completedAt = "completed_at"
+        case lockVersion = "lock_version"
+    }
+}
+
 private struct WorkoutSessionEnvelope: Decodable {
     var workoutSession: WorkoutSession
 
@@ -118,8 +140,8 @@ private struct WorkoutSessionSetEnvelope: Decodable {
     }
 }
 
-private struct WorkoutSessionRequestEnvelope: Encodable {
-    var workoutSession: WorkoutSessionStartPayload
+private struct WorkoutSessionRequestEnvelope<Payload: Encodable>: Encodable {
+    var workoutSession: Payload
 
     enum CodingKeys: String, CodingKey {
         case workoutSession = "workout_session"

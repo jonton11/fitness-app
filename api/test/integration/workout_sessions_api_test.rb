@@ -58,6 +58,42 @@ class WorkoutSessionsApiTest < ActionDispatch::IntegrationTest
     assert_equal [ "Upper Chest Press" ], body.fetch("exercises").map { |exercise| exercise.fetch("label") }
   end
 
+  test "completes workout session and marks pending sets not performed" do
+    session = WorkoutSessions::Start.call(workout_template: create_template)
+    warmup, working = session.exercises.first.workout_session_sets.to_a
+    warmup.update!(
+      actual_reps: 5,
+      actual_load_value: 30,
+      completion_state: "completed",
+      completed_at: Time.zone.parse("2026-10-02 11:45:00")
+    )
+
+    patch "/api/v1/workout_sessions/#{session.id}", params: {
+      workout_session: {
+        status: "completed",
+        completed_at: "2026-10-02T12:00:00Z",
+        lock_version: session.lock_version
+      }
+    }
+
+    assert_response :success
+    body = response.parsed_body.fetch("workout_session")
+    assert_equal "completed", body.fetch("status")
+    assert_equal "2026-10-02T12:00:00.000Z", body.fetch("completed_at")
+    assert_equal 1, body.fetch("lock_version")
+
+    returned_warmup, returned_working = body.dig("exercises", 0, "workout_session_sets")
+    assert_equal "completed", returned_warmup.fetch("completion_state")
+    assert_equal 5, returned_warmup.fetch("actual_reps")
+    assert_equal "not_performed", returned_working.fetch("completion_state")
+    assert_nil returned_working.fetch("actual_reps")
+    assert_nil returned_working.fetch("actual_load_value")
+    assert_nil returned_working.fetch("completed_at")
+    assert_equal "completed", body.dig("exercises", 0, "status")
+
+    assert_equal "not_performed", working.reload.completion_state
+  end
+
   test "keeps returned session snapshot stable after template edits" do
     template = create_template
     session = WorkoutSessions::Start.call(workout_template: template)
@@ -136,6 +172,45 @@ class WorkoutSessionsApiTest < ActionDispatch::IntegrationTest
         "field" => "started_at",
         "code" => "invalid",
         "message" => "Started at must be an ISO-8601 timestamp"
+      },
+      response.parsed_body.fetch("errors").first
+    )
+  end
+
+  test "returns conflict when completing a stale workout session" do
+    session = WorkoutSessions::Start.call(workout_template: create_template)
+    stale_lock_version = session.lock_version
+    session.update!(workout_template_name: "Changed")
+
+    patch "/api/v1/workout_sessions/#{session.id}", params: {
+      workout_session: {
+        status: "completed",
+        lock_version: stale_lock_version
+      }
+    }
+
+    assert_response :conflict
+    assert_equal "lock_version", response.parsed_body.dig("errors", 0, "field")
+    assert_equal "stale", response.parsed_body.dig("errors", 0, "code")
+  end
+
+  test "returns validation error for invalid completed at timestamp" do
+    session = WorkoutSessions::Start.call(workout_template: create_template)
+
+    patch "/api/v1/workout_sessions/#{session.id}", params: {
+      workout_session: {
+        status: "completed",
+        completed_at: "Friday-ish",
+        lock_version: session.lock_version
+      }
+    }
+
+    assert_response :unprocessable_content
+    assert_equal(
+      {
+        "field" => "completed_at",
+        "code" => "invalid",
+        "message" => "Completed at must be an ISO-8601 timestamp"
       },
       response.parsed_body.fetch("errors").first
     )
