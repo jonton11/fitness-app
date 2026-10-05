@@ -149,6 +149,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
                 ActiveWorkoutState(
                     session: updatedSession,
                     pendingSetUpdates: updatedPendingSetUpdates,
+                    pendingSessionCompletion: pendingSessionCompletion,
                     syncIssues: updatedSyncIssues
                 )
             )
@@ -210,6 +211,11 @@ final class ActiveWorkoutViewModel: ObservableObject {
             return
         }
 
+        guard syncIssues.isEmpty else {
+            errorMessage = "Some set syncs need attention."
+            return
+        }
+
         await retryPendingSessionCompletion()
     }
 
@@ -237,6 +243,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
                     ActiveWorkoutState(
                         session: updatedSession,
                         pendingSetUpdates: nextRemainingUpdates,
+                        pendingSessionCompletion: pendingSessionCompletion,
                         syncIssues: nextSyncIssues
                     )
                 )
@@ -261,6 +268,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
                             ActiveWorkoutState(
                                 session: session,
                                 pendingSetUpdates: nextRemainingUpdates,
+                                pendingSessionCompletion: pendingSessionCompletion,
                                 syncIssues: nextSyncIssues
                             )
                         )

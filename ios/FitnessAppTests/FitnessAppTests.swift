@@ -676,6 +676,107 @@ final class FitnessAppTests: XCTestCase {
     }
 
     @MainActor
+    func testActiveWorkoutFinishDoesNotSyncCompletionWhenSyncIssueExists() async {
+        let session = workoutSessionFixture()
+        let firstSet = session.exercises[0].workoutSessionSets[0]
+        let pendingPayload = WorkoutSessionSetUpdatePayload(
+            actualReps: 7,
+            actualLoadValue: 65,
+            completionState: .completed,
+            completedAt: "2026-10-03T12:00:00.000Z",
+            lockVersion: firstSet.lockVersion
+        )
+        let box = ActiveWorkoutStoreBox(
+            state: ActiveWorkoutState(
+                session: session,
+                syncIssues: [
+                    WorkoutSessionSetSyncIssue(
+                        setID: firstSet.id,
+                        payload: pendingPayload,
+                        statusCode: 409
+                    )
+                ]
+            )
+        )
+        let viewModel = ActiveWorkoutViewModel(
+            session: session,
+            store: activeWorkoutStore(box: box),
+            now: { Date(timeIntervalSince1970: 0) },
+            finishWorkoutSession: { _, _ in
+                XCTFail("Completion sync should wait until set sync issues are resolved.")
+                throw ActiveWorkoutStoreFailure.failed
+            }
+        )
+
+        let didFinish = await viewModel.finishWorkout()
+
+        XCTAssertTrue(didFinish)
+        XCTAssertEqual(viewModel.errorMessage, "Some set syncs need attention.")
+        XCTAssertEqual(viewModel.pendingSyncCount, 1)
+        XCTAssertEqual(viewModel.syncIssueCount, 1)
+        XCTAssertEqual(viewModel.session.status, .completed)
+        XCTAssertEqual(box.state?.session.status, .completed)
+        XCTAssertEqual(box.state?.pendingSessionCompletion?.payload.lockVersion, session.lockVersion)
+        XCTAssertEqual(box.state?.syncIssues.count, 1)
+    }
+
+    @MainActor
+    func testActiveWorkoutRetryPreservesPendingCompletionWhenSetSyncSucceedsBeforeFinishSyncFailure() async {
+        var session = workoutSessionFixture()
+        let firstSet = session.exercises[0].workoutSessionSets[0]
+        let pendingUpdate = PendingWorkoutSessionSetUpdate(
+            setID: firstSet.id,
+            payload: WorkoutSessionSetUpdatePayload(
+                actualReps: 7,
+                actualLoadValue: 65,
+                completionState: .completed,
+                completedAt: "2026-10-03T12:00:00.000Z",
+                lockVersion: firstSet.lockVersion
+            )
+        )
+        session.exercises[0].workoutSessionSets[0].actualReps = pendingUpdate.payload.actualReps
+        session.exercises[0].workoutSessionSets[0].actualLoadValue = pendingUpdate.payload.actualLoadValue
+        session.exercises[0].workoutSessionSets[0].completionState = pendingUpdate.payload.completionState
+        session.exercises[0].workoutSessionSets[0].completedAt = pendingUpdate.payload.completedAt
+        let box = ActiveWorkoutStoreBox(
+            state: ActiveWorkoutState(
+                session: session,
+                pendingSetUpdates: [pendingUpdate]
+            )
+        )
+        let viewModel = ActiveWorkoutViewModel(
+            session: session,
+            store: activeWorkoutStore(box: box),
+            now: { Date(timeIntervalSince1970: 0) },
+            finishWorkoutSession: { _, _ in
+                throw URLError(.notConnectedToInternet)
+            },
+            updateWorkoutSessionSet: { id, payload in
+                XCTAssertEqual(id, pendingUpdate.setID)
+                XCTAssertEqual(payload, pendingUpdate.payload)
+
+                var syncedSet = firstSet
+                syncedSet.actualReps = payload.actualReps
+                syncedSet.actualLoadValue = payload.actualLoadValue
+                syncedSet.completionState = payload.completionState
+                syncedSet.completedAt = payload.completedAt
+                syncedSet.lockVersion = payload.lockVersion + 1
+                return syncedSet
+            }
+        )
+
+        let didFinish = await viewModel.finishWorkout()
+
+        XCTAssertTrue(didFinish)
+        XCTAssertEqual(viewModel.errorMessage, "Workout saved locally. Finish sync pending.")
+        XCTAssertEqual(viewModel.pendingSyncCount, 1)
+        XCTAssertEqual(viewModel.syncIssueCount, 0)
+        XCTAssertEqual(box.state?.pendingSetUpdates, [])
+        XCTAssertEqual(box.state?.pendingSessionCompletion?.payload.lockVersion, session.lockVersion)
+        XCTAssertEqual(box.state?.session.exercises[0].workoutSessionSets[0].lockVersion, firstSet.lockVersion + 1)
+    }
+
+    @MainActor
     func testActiveWorkoutFinishSyncClearsLocalActiveWorkoutState() async {
         let box = ActiveWorkoutStoreBox(state: nil)
         let session = workoutSessionFixture()
