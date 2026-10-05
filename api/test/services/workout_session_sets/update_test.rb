@@ -76,6 +76,25 @@ module WorkoutSessionSets
       assert_nil updated_set.completed_at
     end
 
+    test "recomputes completed session exercise status after historical correction" do
+      workout_session_set = create_workout_session_set(
+        completion_state: "completed",
+        actual_reps: 7,
+        actual_load_value: 65,
+        completed_at: Time.current
+      )
+      session_exercise = workout_session_set.workout_session_exercise
+      session_exercise.update!(status: "completed")
+      session_exercise.workout_session.update!(status: "completed", completed_at: Time.current)
+
+      Update.call(
+        workout_session_set:,
+        attributes: { completion_state: "not_performed" }
+      )
+
+      assert_equal "skipped", session_exercise.reload.status
+    end
+
     test "requires actual reps for performed set states" do
       workout_session_set = create_workout_session_set
 

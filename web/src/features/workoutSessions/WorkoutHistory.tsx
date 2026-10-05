@@ -1,11 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { listWorkoutSessions } from '../../api/workoutSessions'
+import {
+  WorkoutSessionApiError,
+  listWorkoutSessions,
+  updateWorkoutSessionSet,
+} from '../../api/workoutSessions'
 import type {
   WorkoutSession,
   WorkoutSessionExercise,
   WorkoutSessionSet,
+  WorkoutSessionSetCompletionState,
+  WorkoutSessionSetPayload,
 } from '../../api/workoutSessions'
+
+type SetDraft = {
+  completionState: WorkoutSessionSetCompletionState
+  actualReps: string
+  actualLoadValue: string
+}
 
 export function WorkoutHistory() {
   const [sessions, setSessions] = useState<WorkoutSession[]>([])
@@ -14,6 +26,10 @@ export function WorkoutHistory() {
   )
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [editingSetId, setEditingSetId] = useState<string | null>(null)
+  const [setDraft, setSetDraft] = useState<SetDraft | null>(null)
+  const [setErrors, setSetErrors] = useState<string[]>([])
+  const [isSavingSet, setIsSavingSet] = useState(false)
 
   useEffect(() => {
     let isCurrent = true
@@ -56,6 +72,60 @@ export function WorkoutHistory() {
   const selectedSession = useMemo(() => {
     return sessions.find((session) => session.id === selectedSessionId) ?? null
   }, [selectedSessionId, sessions])
+
+  function startEditingSet(set: WorkoutSessionSet) {
+    setEditingSetId(set.id)
+    setSetDraft({
+      completionState: set.completion_state,
+      actualReps: set.actual_reps == null ? '' : String(set.actual_reps),
+      actualLoadValue:
+        set.actual_load_value == null
+          ? ''
+          : formatNumber(set.actual_load_value),
+    })
+    setSetErrors([])
+  }
+
+  function updateSetDraft(changes: Partial<SetDraft>) {
+    setSetDraft((currentDraft) =>
+      currentDraft ? { ...currentDraft, ...changes } : currentDraft,
+    )
+    setSetErrors([])
+  }
+
+  function cancelEditingSet() {
+    setEditingSetId(null)
+    setSetDraft(null)
+    setSetErrors([])
+  }
+
+  async function saveSetCorrection(set: WorkoutSessionSet) {
+    if (!setDraft) {
+      return
+    }
+
+    const payload = correctionPayload(set, setDraft)
+
+    if ('errors' in payload) {
+      setSetErrors(payload.errors)
+      return
+    }
+
+    setIsSavingSet(true)
+    setSetErrors([])
+
+    try {
+      const savedSet = await updateWorkoutSessionSet(set.id, payload)
+      setSessions((currentSessions) =>
+        currentSessions.map((session) => replaceSessionSet(session, savedSet)),
+      )
+      cancelEditingSet()
+    } catch (error) {
+      setSetErrors(extractMessages(error))
+    } finally {
+      setIsSavingSet(false)
+    }
+  }
 
   return (
     <main className="app-shell">
@@ -104,7 +174,17 @@ export function WorkoutHistory() {
             ) : null}
 
             {selectedSession ? (
-              <SessionDetail session={selectedSession} />
+              <SessionDetail
+                editingSetId={editingSetId}
+                isSavingSet={isSavingSet}
+                onCancelSetEdit={cancelEditingSet}
+                onSaveSet={saveSetCorrection}
+                onSetDraftChange={updateSetDraft}
+                onStartSetEdit={startEditingSet}
+                session={selectedSession}
+                setDraft={setDraft}
+                setErrors={setErrors}
+              />
             ) : (
               <div className="empty-detail">
                 <h2 id="history-detail">Workout Details</h2>
@@ -118,7 +198,27 @@ export function WorkoutHistory() {
   )
 }
 
-function SessionDetail({ session }: { session: WorkoutSession }) {
+function SessionDetail({
+  editingSetId,
+  isSavingSet,
+  onCancelSetEdit,
+  onSaveSet,
+  onSetDraftChange,
+  onStartSetEdit,
+  session,
+  setDraft,
+  setErrors,
+}: {
+  editingSetId: string | null
+  isSavingSet: boolean
+  onCancelSetEdit: () => void
+  onSaveSet: (set: WorkoutSessionSet) => void
+  onSetDraftChange: (changes: Partial<SetDraft>) => void
+  onStartSetEdit: (set: WorkoutSessionSet) => void
+  session: WorkoutSession
+  setDraft: SetDraft | null
+  setErrors: string[]
+}) {
   return (
     <>
       <div className="detail-heading">
@@ -146,19 +246,55 @@ function SessionDetail({ session }: { session: WorkoutSession }) {
         <SummaryItem label="Template" value={session.workout_template_name} />
       </div>
 
+      {setErrors.length ? (
+        <div className="error-list" role="alert">
+          {setErrors.map((message) => (
+            <p key={message}>{message}</p>
+          ))}
+        </div>
+      ) : null}
+
       <div className="history-exercise-list">
         {session.exercises
           .slice()
           .sort((first, second) => first.position - second.position)
           .map((exercise) => (
-            <ExerciseDetail exercise={exercise} key={exercise.id} />
+            <ExerciseDetail
+              editingSetId={editingSetId}
+              exercise={exercise}
+              isSavingSet={isSavingSet}
+              key={exercise.id}
+              onCancelSetEdit={onCancelSetEdit}
+              onSaveSet={onSaveSet}
+              onSetDraftChange={onSetDraftChange}
+              onStartSetEdit={onStartSetEdit}
+              setDraft={setDraft}
+            />
           ))}
       </div>
     </>
   )
 }
 
-function ExerciseDetail({ exercise }: { exercise: WorkoutSessionExercise }) {
+function ExerciseDetail({
+  editingSetId,
+  exercise,
+  isSavingSet,
+  onCancelSetEdit,
+  onSaveSet,
+  onSetDraftChange,
+  onStartSetEdit,
+  setDraft,
+}: {
+  editingSetId: string | null
+  exercise: WorkoutSessionExercise
+  isSavingSet: boolean
+  onCancelSetEdit: () => void
+  onSaveSet: (set: WorkoutSessionSet) => void
+  onSetDraftChange: (changes: Partial<SetDraft>) => void
+  onStartSetEdit: (set: WorkoutSessionSet) => void
+  setDraft: SetDraft | null
+}) {
   return (
     <section className="history-exercise" aria-labelledby={exercise.id}>
       <div className="compact-heading">
@@ -171,14 +307,126 @@ function ExerciseDetail({ exercise }: { exercise: WorkoutSessionExercise }) {
           .slice()
           .sort((first, second) => first.position - second.position)
           .map((set) => (
-            <SetResult set={set} key={set.id} />
+            <SetResult
+              isEditing={editingSetId === set.id}
+              isSaving={isSavingSet}
+              key={set.id}
+              onCancel={onCancelSetEdit}
+              onDraftChange={onSetDraftChange}
+              onEdit={onStartSetEdit}
+              onSave={onSaveSet}
+              set={set}
+              setDraft={setDraft}
+            />
           ))}
       </div>
     </section>
   )
 }
 
-function SetResult({ set }: { set: WorkoutSessionSet }) {
+function SetResult({
+  isEditing,
+  isSaving,
+  onCancel,
+  onDraftChange,
+  onEdit,
+  onSave,
+  set,
+  setDraft,
+}: {
+  isEditing: boolean
+  isSaving: boolean
+  onCancel: () => void
+  onDraftChange: (changes: Partial<SetDraft>) => void
+  onEdit: (set: WorkoutSessionSet) => void
+  onSave: (set: WorkoutSessionSet) => void
+  set: WorkoutSessionSet
+  setDraft: SetDraft | null
+}) {
+  if (isEditing && setDraft) {
+    const isPerformed = performedCompletionState(setDraft.completionState)
+
+    return (
+      <form
+        className="set-edit-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          onSave(set)
+        }}
+      >
+        <label className="field-label">
+          State
+          <select
+            className="text-input"
+            aria-label={`Set ${set.position} state`}
+            value={setDraft.completionState}
+            onChange={(event) =>
+              onDraftChange({
+                completionState: event.target
+                  .value as WorkoutSessionSetCompletionState,
+              })
+            }
+          >
+            <option value="completed">Completed</option>
+            <option value="attempted_but_target_not_met">Attempted</option>
+            <option value="not_performed">Not Performed</option>
+          </select>
+        </label>
+
+        <label className="field-label">
+          Reps
+          <input
+            className="text-input"
+            aria-label={`Set ${set.position} actual reps`}
+            disabled={!isPerformed}
+            inputMode="numeric"
+            min="0"
+            type="number"
+            value={isPerformed ? setDraft.actualReps : ''}
+            onChange={(event) =>
+              onDraftChange({ actualReps: event.target.value })
+            }
+          />
+        </label>
+
+        <label className="field-label">
+          Load
+          <input
+            className="text-input"
+            aria-label={`Set ${set.position} actual load`}
+            disabled={!isPerformed}
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            type="number"
+            value={isPerformed ? setDraft.actualLoadValue : ''}
+            onChange={(event) =>
+              onDraftChange({ actualLoadValue: event.target.value })
+            }
+          />
+        </label>
+
+        <div className="inline-actions set-edit-actions">
+          <button
+            className="primary-button compact-button"
+            disabled={isSaving}
+            type="submit"
+          >
+            Save
+          </button>
+          <button
+            className="secondary-button compact-button"
+            disabled={isSaving}
+            type="button"
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    )
+  }
+
   return (
     <div className="set-result-row">
       <span>
@@ -190,6 +438,14 @@ function SetResult({ set }: { set: WorkoutSessionSet }) {
       <span>{completionStateLabel(set.completion_state)}</span>
       <span>{set.actual_reps == null ? '-' : `${set.actual_reps} reps`}</span>
       <span>{formatLoad(set.actual_load_value)}</span>
+      <button
+        className="secondary-button compact-button"
+        aria-label={`Edit set ${set.position}`}
+        type="button"
+        onClick={() => onEdit(set)}
+      >
+        Edit
+      </button>
     </div>
   )
 }
@@ -212,9 +468,7 @@ function performedSetCount(session: WorkoutSession) {
     return (
       count +
       exercise.workout_session_sets.filter((set) =>
-        ['completed', 'attempted_but_target_not_met'].includes(
-          set.completion_state,
-        ),
+        performedCompletionState(set.completion_state),
       ).length
     )
   }, 0)
@@ -225,6 +479,99 @@ function totalSetCount(session: WorkoutSession) {
     (count, exercise) => count + exercise.workout_session_sets.length,
     0,
   )
+}
+
+function correctionPayload(
+  set: WorkoutSessionSet,
+  draft: SetDraft,
+): WorkoutSessionSetPayload | { errors: string[] } {
+  if (!performedCompletionState(draft.completionState)) {
+    return {
+      completion_state: draft.completionState,
+      lock_version: set.lock_version,
+    }
+  }
+
+  const actualReps = parseNonNegativeInteger(draft.actualReps)
+  const actualLoadValue = parseOptionalNonNegativeNumber(draft.actualLoadValue)
+  const errors: string[] = []
+
+  if (actualReps == null) {
+    errors.push('Enter reps for performed sets.')
+  }
+
+  if (actualLoadValue === false) {
+    errors.push('Enter a valid load.')
+  }
+
+  if (errors.length) {
+    return { errors }
+  }
+
+  const validActualLoadValue =
+    actualLoadValue === false ? null : actualLoadValue
+
+  return {
+    actual_reps: actualReps,
+    actual_load_value: validActualLoadValue,
+    completion_state: draft.completionState,
+    lock_version: set.lock_version,
+  }
+}
+
+function parseNonNegativeInteger(value: string) {
+  const trimmedValue = value.trim()
+  if (!trimmedValue) {
+    return null
+  }
+
+  const parsedValue = Number(trimmedValue)
+  return Number.isInteger(parsedValue) && parsedValue >= 0 ? parsedValue : null
+}
+
+function parseOptionalNonNegativeNumber(value: string) {
+  const trimmedValue = value.trim()
+  if (!trimmedValue) {
+    return null
+  }
+
+  const parsedValue = Number(trimmedValue)
+  return Number.isFinite(parsedValue) && parsedValue >= 0 ? parsedValue : false
+}
+
+function replaceSessionSet(
+  session: WorkoutSession,
+  savedSet: WorkoutSessionSet,
+) {
+  if (
+    !session.exercises.some((exercise) =>
+      exercise.workout_session_sets.some((set) => set.id === savedSet.id),
+    )
+  ) {
+    return session
+  }
+
+  return {
+    ...session,
+    exercises: session.exercises.map((exercise) => ({
+      ...exercise,
+      workout_session_sets: exercise.workout_session_sets.map((set) =>
+        set.id === savedSet.id ? savedSet : set,
+      ),
+    })),
+  }
+}
+
+function extractMessages(error: unknown) {
+  if (error instanceof WorkoutSessionApiError) {
+    return error.errors.map((apiError) => apiError.message)
+  }
+
+  return ['Could not save workout correction.']
+}
+
+function performedCompletionState(state: WorkoutSessionSetCompletionState) {
+  return state === 'completed' || state === 'attempted_but_target_not_met'
 }
 
 function formatDateTime(value: string) {

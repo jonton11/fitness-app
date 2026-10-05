@@ -328,6 +328,49 @@ describe('App', () => {
     expect(within(notPerformedRow).getAllByText('-')).toHaveLength(2)
   })
 
+  it('edits a completed workout history set with lock version', async () => {
+    const updatedSet = {
+      ...completedSession.exercises[0].workout_session_sets[0],
+      actual_reps: 7,
+      actual_load_value: 62.5,
+      lock_version: 2,
+    }
+
+    mockJsonResponse({ workout_templates: [], meta: {} })
+    mockJsonResponse({ exercises: [inclinePress], meta: {} })
+    mockJsonResponse({ workout_sessions: [completedSession], meta: {} })
+    mockJsonResponse({ workout_session_set: updatedSet })
+
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'History' }))
+
+    expect(await screen.findByText('8 reps')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit set 1' }))
+    fireEvent.change(screen.getByLabelText('Set 1 actual reps'), {
+      target: { value: '7' },
+    })
+    fireEvent.change(screen.getByLabelText('Set 1 actual load'), {
+      target: { value: '62.5' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(4)
+    })
+    expect(fetch).toHaveBeenLastCalledWith(
+      '/api/v1/workout_session_sets/session-set-1',
+      expect.objectContaining({ method: 'PATCH' }),
+    )
+    expect(lastWorkoutSessionSetRequest()).toMatchObject({
+      actual_reps: 7,
+      actual_load_value: 62.5,
+      completion_state: 'completed',
+      lock_version: 1,
+    })
+    expect(await screen.findByText('7 reps')).toBeInTheDocument()
+    expect(screen.getByText('62.5 load')).toBeInTheDocument()
+  })
+
   it('creates a workout template', async () => {
     const savedTemplate = {
       ...upperTemplate,
@@ -506,4 +549,14 @@ function lastWorkoutTemplateRequest() {
   }
 
   return body.workout_template
+}
+
+function lastWorkoutSessionSetRequest() {
+  const lastCall = vi.mocked(fetch).mock.calls.at(-1)
+  const init = lastCall?.[1] as RequestInit | undefined
+  const body = JSON.parse(init?.body as string) as {
+    workout_session_set: Record<string, unknown>
+  }
+
+  return body.workout_session_set
 }

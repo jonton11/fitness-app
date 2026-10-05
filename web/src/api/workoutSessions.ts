@@ -66,8 +66,30 @@ export type WorkoutSession = {
   exercises: WorkoutSessionExercise[]
 }
 
+export type WorkoutSessionSetPayload = {
+  actual_reps?: number | null
+  actual_load_value?: number | null
+  completion_state?: WorkoutSessionSetCompletionState
+  completed_at?: string | null
+  lock_version: number
+}
+
+export type ApiError = {
+  field: string
+  code: string
+  message: string
+}
+
 type WorkoutSessionListResponse = {
   workout_sessions: WorkoutSession[]
+}
+
+type WorkoutSessionSetResponse = {
+  workout_session_set: WorkoutSessionSet
+}
+
+type ErrorResponse = {
+  errors: ApiError[]
 }
 
 export async function listWorkoutSessions(
@@ -81,6 +103,21 @@ export async function listWorkoutSessions(
   return response.workout_sessions
 }
 
+export async function updateWorkoutSessionSet(
+  id: string,
+  payload: WorkoutSessionSetPayload,
+): Promise<WorkoutSessionSet> {
+  const response = await fetchJson<WorkoutSessionSetResponse>(
+    `/api/v1/workout_session_sets/${id}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ workout_session_set: payload }),
+    },
+  )
+
+  return response.workout_session_set
+}
+
 async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -92,8 +129,25 @@ async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   })
 
   if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ErrorResponse | null
+
+    if (body?.errors?.length) {
+      throw new WorkoutSessionApiError(body.errors)
+    }
+
     throw new Error(`Workout session request failed with ${response.status}`)
   }
 
   return (await response.json()) as T
+}
+
+export class WorkoutSessionApiError extends Error {
+  readonly errors: ApiError[]
+
+  constructor(errors: ApiError[]) {
+    super(errors.map((error) => error.message).join(', '))
+    this.errors = errors
+  }
 }
