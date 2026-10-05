@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
 import type { Exercise } from './api/exercises'
+import type { WorkoutSession } from './api/workoutSessions'
 import type { WorkoutTemplate } from './api/workoutTemplates'
 
 const inclinePress: Exercise = {
@@ -48,6 +49,78 @@ const upperTemplate: WorkoutTemplate = {
   updated_at: '2026-10-01T00:00:00.000Z',
   lock_version: 0,
   slots: [],
+}
+
+const completedSession: WorkoutSession = {
+  id: 'session-1',
+  workout_template_id: 'template-1',
+  workout_template_name: 'Upper Body',
+  status: 'completed',
+  started_at: '2026-10-03T12:00:00.000Z',
+  completed_at: '2026-10-03T12:45:00.000Z',
+  canceled_at: null,
+  created_at: '2026-10-03T12:00:00.000Z',
+  updated_at: '2026-10-03T12:45:00.000Z',
+  lock_version: 1,
+  exercises: [
+    {
+      id: 'session-exercise-1',
+      workout_template_slot_id: 'slot-1',
+      workout_template_exercise_option_id: 'option-1',
+      position: 1,
+      label: 'Upper Chest Press',
+      selected_exercise_id: inclinePress.id,
+      selected_exercise: {
+        id: inclinePress.id,
+        name: inclinePress.name,
+        load_type: inclinePress.load_type,
+      },
+      rest_seconds: 180,
+      planned_working_load_value: 65,
+      progression_increment: 5,
+      status: 'completed',
+      created_at: '2026-10-03T12:00:00.000Z',
+      updated_at: '2026-10-03T12:45:00.000Z',
+      workout_session_sets: [
+        {
+          id: 'session-set-1',
+          workout_template_set_prescription_id: 'prescription-1',
+          position: 1,
+          set_type: 'working',
+          target_rep_min: 5,
+          target_rep_max: 8,
+          load_strategy: 'working_load',
+          prescribed_load_value: null,
+          planned_load_value: 65,
+          actual_reps: 8,
+          actual_load_value: 65,
+          completion_state: 'completed',
+          completed_at: '2026-10-03T12:20:00.000Z',
+          lock_version: 1,
+          created_at: '2026-10-03T12:00:00.000Z',
+          updated_at: '2026-10-03T12:20:00.000Z',
+        },
+        {
+          id: 'session-set-2',
+          workout_template_set_prescription_id: 'prescription-2',
+          position: 2,
+          set_type: 'working',
+          target_rep_min: 5,
+          target_rep_max: 8,
+          load_strategy: 'working_load',
+          prescribed_load_value: null,
+          planned_load_value: 65,
+          actual_reps: null,
+          actual_load_value: null,
+          completion_state: 'not_performed',
+          completed_at: null,
+          lock_version: 1,
+          created_at: '2026-10-03T12:00:00.000Z',
+          updated_at: '2026-10-03T12:45:00.000Z',
+        },
+      ],
+    },
+  ],
 }
 
 describe('App', () => {
@@ -225,6 +298,34 @@ describe('App', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('Upper Body')).toBeInTheDocument()
     expect(screen.getByText('0 exercises')).toBeInTheDocument()
+  })
+
+  it('renders completed workout history from the API', async () => {
+    mockJsonResponse({ workout_templates: [], meta: {} })
+    mockJsonResponse({ exercises: [inclinePress], meta: {} })
+    mockJsonResponse({ workout_sessions: [completedSession], meta: {} })
+
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'History' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'History' }),
+    ).toBeInTheDocument()
+    expect(fetch).toHaveBeenLastCalledWith(
+      '/api/v1/workout_sessions?status=completed',
+      expect.anything(),
+    )
+    expect(screen.getAllByText('Upper Body').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText('Upper Chest Press')).toBeInTheDocument()
+    expect(screen.getByText('8 reps')).toBeInTheDocument()
+    expect(screen.getByText('65 load')).toBeInTheDocument()
+
+    const notPerformedRow = screen.getByText('Not Performed').parentElement
+    if (!notPerformedRow) {
+      throw new Error('Expected a row for the not-performed set')
+    }
+
+    expect(within(notPerformedRow).getAllByText('-')).toHaveLength(2)
   })
 
   it('creates a workout template', async () => {

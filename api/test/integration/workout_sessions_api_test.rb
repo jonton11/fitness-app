@@ -58,6 +58,53 @@ class WorkoutSessionsApiTest < ActionDispatch::IntegrationTest
     assert_equal [ "Upper Chest Press" ], body.fetch("exercises").map { |exercise| exercise.fetch("label") }
   end
 
+  test "lists completed workout session history newest first" do
+    older_session = WorkoutSessions::Start.call(
+      workout_template: create_template,
+      started_at: Time.zone.parse("2026-10-01 12:00:00")
+    )
+    newer_session = WorkoutSessions::Start.call(
+      workout_template: create_template,
+      started_at: Time.zone.parse("2026-10-03 12:00:00")
+    )
+    WorkoutSessions::Start.call(
+      workout_template: create_template,
+      started_at: Time.zone.parse("2026-10-04 12:00:00")
+    )
+
+    older_session.update!(status: "completed", completed_at: Time.zone.parse("2026-10-01 13:00:00"))
+    newer_session.update!(status: "completed", completed_at: Time.zone.parse("2026-10-03 13:00:00"))
+
+    get "/api/v1/workout_sessions"
+
+    assert_response :success
+    body = response.parsed_body
+    sessions = body.fetch("workout_sessions")
+    assert_equal [ newer_session.id, older_session.id ], sessions.map { |session| session.fetch("id") }
+    assert_equal "completed", sessions.first.fetch("status")
+    assert_equal "Upper Chest Press", sessions.first.dig("exercises", 0, "label")
+    assert_equal(
+      {
+        "limit" => 50,
+        "offset" => 0,
+        "total" => 2
+      },
+      body.fetch("meta")
+    )
+  end
+
+  test "lists active workout sessions when requested" do
+    active_session = WorkoutSessions::Start.call(workout_template: create_template)
+    completed_session = WorkoutSessions::Start.call(workout_template: create_template)
+    completed_session.update!(status: "completed", completed_at: Time.current)
+
+    get "/api/v1/workout_sessions", params: { status: "active" }
+
+    assert_response :success
+    sessions = response.parsed_body.fetch("workout_sessions")
+    assert_equal [ active_session.id ], sessions.map { |session| session.fetch("id") }
+  end
+
   test "completes workout session and marks pending sets not performed" do
     session = WorkoutSessions::Start.call(workout_template: create_template)
     warmup, working = session.exercises.first.workout_session_sets.to_a
