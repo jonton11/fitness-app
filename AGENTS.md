@@ -45,6 +45,10 @@ client for a personal fitness tracker.
 - Prefer follow-up commits that can be understood independently. Before merge,
   squash or reword cleanup-only commits when they only correct earlier commits in
   the same branch.
+- Pull requests that change user-facing UI must include screenshots in the PR
+  body or a clearly linked PR comment. Use GitHub-native attachments where
+  possible, and constrain oversized mobile screenshots so the PR remains
+  readable.
 
 ## Code Review Rules
 
