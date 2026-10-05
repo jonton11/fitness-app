@@ -58,6 +58,11 @@ Each scenario should include:
 - **False-positive traps:** findings the reviewer should not raise.
 - **Pass bar:** the minimum acceptable review behavior.
 
+Prefer scenarios anchored in current code paths. A reviewer is more likely to
+learn the repository's real risks from a temporary change to
+`WorkoutSessions::Start`, `WorkoutTemplates::Save`, or an existing serializer
+than from a toy file made only for the eval.
+
 ## Rails Migration Convention Canary
 
 Temporary diff:
@@ -92,6 +97,49 @@ False-positive traps:
 Pass bar:
 
 - One actionable finding tied to the changed migration lines.
+
+## Workout Session Active Record Migration Canary
+
+Temporary diff:
+
+- Add a migration that renames `workout_session_sets` or one of its columns.
+- Use `execute <<~SQL.squish` with manual `ALTER TABLE`, manual constraint
+  renames, or conditional state checks instead of Rails helpers such as
+  `rename_table`, `rename_column`, `remove_check_constraint`, and
+  `add_check_constraint`.
+- Keep the migration plausibly correct and make the rest of the code compile so
+  the issue is Rails fit and maintainability, not syntax.
+
+Organic prompt:
+
+```text
+Review this branch against our Rails conventions. Focus on migration safety,
+schema maintainability, and whether the implementation fits normal Active Record
+practice.
+```
+
+Expected catch:
+
+- The review flags raw SQL and hand-managed schema mechanics as inappropriate
+  when Active Record migration helpers can express the change.
+- If the temporary diff says the schema has not been deployed, the review should
+  prefer a simpler Rails-native migration or cleanup over compatibility-heavy
+  state checks.
+- The review ties the comment to the migration lines, not to unrelated model or
+  controller naming.
+
+False-positive traps:
+
+- Do not require elaborate compatibility code when the branch is explicitly
+  undeployed and can use a simpler Rails-native change.
+- Do not accept `execute` merely because constraint names are awkward. The
+  reviewer should look for `remove_check_constraint` and `add_check_constraint`
+  first.
+
+Pass bar:
+
+- One actionable finding that asks for Active Record migration APIs instead of
+  raw SQL for the rename or constraint update.
 
 ## Optimistic Locking Canary
 
@@ -153,6 +201,173 @@ False-positive traps:
 Pass bar:
 
 - One actionable finding tied to the changed response key.
+
+## Partial Update Semantics Canary
+
+Temporary diff:
+
+- Change `WorkoutTemplates::Save` so an omitted optional attribute is replaced
+  with `nil` during update. For example, make an update payload without `notes`
+  clear existing notes.
+- Update only happy-path tests that send every field.
+
+Organic prompt:
+
+```text
+Review this API change for merge readiness. Focus on client-visible behavior and
+whether PATCH-style updates preserve omitted data.
+```
+
+Expected catch:
+
+- The review flags that partial updates must preserve omitted attributes unless
+  the API explicitly documents replacement semantics.
+- The finding references the service/controller path that turns omission into a
+  destructive update.
+
+False-positive traps:
+
+- Do not flag explicit `null` values when the endpoint intentionally allows a
+  client to clear a nullable field.
+- Do not demand a new abstraction if preserving omitted attributes can be done
+  directly in the existing save path.
+
+Pass bar:
+
+- One actionable finding tied to the code path that clears an omitted field.
+
+## Historical Workout Snapshot Canary
+
+Temporary diff:
+
+- Change `WorkoutSessions::Start` so new sessions no longer snapshot template or
+  exercise values such as labels, selected exercise names, planned loads, or set
+  prescriptions.
+- Instead, make historical sessions depend on current `WorkoutTemplate` or
+  `Exercise` records at read time.
+
+Organic prompt:
+
+```text
+Review this branch for data safety and historical workout correctness.
+```
+
+Expected catch:
+
+- The review flags that historical workout records must not be silently
+  reinterpreted when a template or exercise changes later.
+- The finding explains that session start should preserve the snapshot behavior
+  required by the fitness history model.
+
+False-positive traps:
+
+- Do not object to keeping foreign keys for traceability when snapshot fields are
+  still preserved.
+- Do not ask for analytics recalculation work unless the temporary diff actually
+  changes historical calculations.
+
+Pass bar:
+
+- One actionable finding tied to the session-start snapshot regression.
+
+## Serializer N+1 Canary
+
+Temporary diff:
+
+- Remove eager loading from `WorkoutTemplatesController#index` or
+  `WorkoutSessionsController#show`.
+- Leave serializers traversing nested associations such as slots, exercise
+  options, session exercises, and session sets.
+
+Organic prompt:
+
+```text
+Review this branch for correctness, performance, and merge readiness.
+```
+
+Expected catch:
+
+- The review flags a likely N+1 query regression caused by serializers walking
+  associations that the controller no longer preloads.
+- The finding should name the controller query and the serializer association
+  traversal that creates the risk.
+
+False-positive traps:
+
+- Do not flag a serializer for N+1 when the controller already preloads the
+  nested associations it reads.
+- Do not require caching as the first fix. Prefer restoring the appropriate
+  `includes`.
+
+Pass bar:
+
+- One actionable finding tied to the missing eager load and the nested serializer
+  access.
+
+## UI Screenshot PR Canary
+
+Temporary diff:
+
+- Change a visible SwiftUI screen, such as
+  `ios/FitnessApp/Features/ActiveWorkout/ActiveWorkoutView.swift`.
+- Open or update a PR body without a screenshot or linked screenshot comment.
+
+Organic prompt:
+
+```text
+Check whether this UI PR is ready for review under the repository guidance.
+```
+
+Expected catch:
+
+- The review flags that user-facing UI changes require screenshots in the PR
+  body or a clearly linked PR comment.
+- If a screenshot is present but huge, the review asks to constrain the rendered
+  width so the PR remains readable.
+
+False-positive traps:
+
+- Do not require screenshots for Rails-only or non-visual refactors.
+- Do not block on screenshot formatting when a readable screenshot is already
+  attached.
+
+Pass bar:
+
+- One actionable PR-level finding or fix for missing/unreadable UI screenshots.
+
+## Git Hygiene Canary
+
+Temporary diff:
+
+- Build a branch with a mixed commit that combines unrelated docs, Rails API,
+  and iOS UI changes.
+- Or split tests into a separate commit after the behavior they validate.
+
+Organic prompt:
+
+```text
+Review this PR for merge readiness, including commit structure and repository
+workflow expectations.
+```
+
+Expected catch:
+
+- The review flags that commits should tell a coherent story and be
+  independently revertible.
+- If tests are split away from the behavior they validate, the review asks to
+  fold them into the feature or fix commit.
+
+False-positive traps:
+
+- Do not require churny rebasing for a branch whose commits are already coherent
+  and independently revertible.
+- Do not object to a separate docs commit when it changes process guidance rather
+  than validating a feature.
+
+Pass bar:
+
+- One actionable finding tied to commit structure when the temporary branch
+  violates the repository's Git hygiene rules.
 
 ## Clean Follow-Up Review Comment Canary
 
