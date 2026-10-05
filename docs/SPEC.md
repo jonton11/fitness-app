@@ -1569,10 +1569,6 @@ Use pull requests even for solo development where practical.
 
 Squash-merging the feature PR into `main` is acceptable, but the branch itself should still be built as a coherent sequence while work is in progress.
 
-### Pull request descriptions
-
-Pull requests that change user-facing UI must include screenshots showing the changed screen or state.
-
 ---
 
 ## 39. Testing Strategy
@@ -2022,6 +2018,14 @@ Acceptance:
 - failed health check is visible and does not silently report success;
 - production survives Windows reboot;
 - iPhone can sync remotely over private network.
+
+### Post-MVE follow-up — Agent review evals
+
+After the MVE is complete and deployed, revisit agent review evals.
+
+Decide whether the lightweight review canaries should remain as documentation or
+graduate into a more structured eval system with reusable fixture patches,
+organic prompts, pass/fail criteria, and result records.
 
 ---
 
