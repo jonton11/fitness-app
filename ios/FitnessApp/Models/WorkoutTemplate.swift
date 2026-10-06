@@ -198,6 +198,7 @@ struct WorkoutTemplateSlotPayload: Codable, Equatable {
 }
 
 struct WorkoutTemplateExerciseOptionPayload: Codable, Equatable {
+    var id: UUID? = nil
     var position: Int
     var exerciseID: UUID
     var startingLoadValue: Double?
@@ -205,6 +206,7 @@ struct WorkoutTemplateExerciseOptionPayload: Codable, Equatable {
     var progressionIncrement: Double?
 
     enum CodingKeys: String, CodingKey {
+        case id
         case position
         case exerciseID = "exercise_id"
         case startingLoadValue = "starting_load_value"
@@ -214,6 +216,7 @@ struct WorkoutTemplateExerciseOptionPayload: Codable, Equatable {
 }
 
 struct WorkoutTemplateSetPrescriptionPayload: Codable, Equatable {
+    var id: UUID? = nil
     var position: Int
     var setType: SetType
     var repMin: Int
@@ -222,6 +225,7 @@ struct WorkoutTemplateSetPrescriptionPayload: Codable, Equatable {
     var loadValue: Double?
 
     enum CodingKeys: String, CodingKey {
+        case id
         case position
         case setType = "set_type"
         case repMin = "rep_min"
