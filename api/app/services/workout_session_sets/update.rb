@@ -15,6 +15,7 @@ module WorkoutSessionSets
         workout_session_set.assign_attributes(update_attributes)
         workout_session_set.save!
         update_completed_session_exercise_status!
+        recalculate_completed_session_progression!
       end
 
       workout_session_set.reload
@@ -59,6 +60,16 @@ module WorkoutSessionSets
       return unless session_exercise.workout_session.status == "completed"
 
       session_exercise.update!(status: exercise_performed?(session_exercise) ? "completed" : "skipped")
+    end
+
+    def recalculate_completed_session_progression!
+      session_exercise = workout_session_set.workout_session_exercise
+      return unless session_exercise.workout_session.status == "completed"
+      return if session_exercise.workout_template_exercise_option.blank?
+
+      Progression::RecalculateFromHistory.call(
+        workout_template_exercise_option: session_exercise.workout_template_exercise_option
+      )
     end
 
     def exercise_performed?(session_exercise)

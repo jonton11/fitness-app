@@ -95,6 +95,25 @@ module WorkoutSessionSets
       assert_equal "skipped", session_exercise.reload.status
     end
 
+    test "recalculates progression after historical correction while preserving manual override" do
+      template = create_progression_template(starting_load_value: 65, next_load_value: 90, progression_increment: 5)
+      option = template.slots.first.exercise_options.first
+      session = WorkoutSessions::Start.call(workout_template: template)
+      perform_working_sets(session, [ 8, 8, 8 ])
+      WorkoutSessions::Complete.call(workout_session: session, attributes: { lock_version: session.lock_version })
+      corrected_set = session.exercises.first.workout_session_sets.second
+
+      assert_equal BigDecimal("70"), option.reload.calculated_next_load_value
+
+      Update.call(
+        workout_session_set: corrected_set,
+        attributes: { actual_reps: 7 }
+      )
+
+      assert_equal BigDecimal("90"), option.reload.next_load_value
+      assert_equal BigDecimal("65"), option.calculated_next_load_value
+    end
+
     test "requires actual reps for performed set states" do
       workout_session_set = create_workout_session_set
 
@@ -141,6 +160,51 @@ module WorkoutSessionSets
           planned_load_value: 65
         }.merge(attributes)
       )
+    end
+
+    def create_progression_template(starting_load_value:, next_load_value:, progression_increment:)
+      template = WorkoutTemplate.create!(name: "Upper")
+      exercise = Exercise.create!(
+        name: "Incline Dumbbell Press",
+        primary_muscle_group: "Chest",
+        load_type: "lb"
+      )
+      slot = template.slots.create!(
+        position: 1,
+        label: "Upper Chest Press",
+        default_exercise: exercise,
+        rest_seconds: 180
+      )
+      slot.exercise_options.create!(
+        position: 1,
+        exercise:,
+        is_default: true,
+        starting_load_value:,
+        next_load_value:,
+        progression_increment:
+      )
+      3.times do |index|
+        slot.set_prescriptions.create!(
+          position: index + 1,
+          set_type: "working",
+          rep_min: 5,
+          rep_max: 8,
+          load_strategy: "working_load"
+        )
+      end
+      template
+    end
+
+    def perform_working_sets(session, reps)
+      completed_at = Time.zone.parse("2026-10-02 11:45:00")
+      session.exercises.first.workout_session_sets.where(set_type: "working").zip(reps).each do |set, actual_reps|
+        set.update!(
+          actual_reps:,
+          actual_load_value: set.planned_load_value,
+          completion_state: "completed",
+          completed_at:
+        )
+      end
     end
   end
 end
