@@ -56,26 +56,30 @@ struct ActiveWorkoutStore: Sendable {
 struct ActiveWorkoutState: Codable, Equatable {
     var session: WorkoutSession
     var pendingSetUpdates: [PendingWorkoutSessionSetUpdate]
-    var pendingSessionCompletion: PendingWorkoutSessionCompletion?
+    var pendingSessionUpdate: PendingWorkoutSessionUpdate?
     var syncIssues: [WorkoutSessionSetSyncIssue]
 
     init(
         session: WorkoutSession,
         pendingSetUpdates: [PendingWorkoutSessionSetUpdate] = [],
-        pendingSessionCompletion: PendingWorkoutSessionCompletion? = nil,
+        pendingSessionUpdate: PendingWorkoutSessionUpdate? = nil,
         syncIssues: [WorkoutSessionSetSyncIssue] = []
     ) {
         self.session = session
         self.pendingSetUpdates = pendingSetUpdates
-        self.pendingSessionCompletion = pendingSessionCompletion
+        self.pendingSessionUpdate = pendingSessionUpdate
         self.syncIssues = syncIssues
     }
 
     enum CodingKeys: String, CodingKey {
         case session
         case pendingSetUpdates = "pending_set_updates"
-        case pendingSessionCompletion = "pending_session_completion"
+        case pendingSessionUpdate = "pending_session_update"
         case syncIssues = "sync_issues"
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case pendingSessionCompletion = "pending_session_completion"
     }
 
     init(from decoder: Decoder) throws {
@@ -86,8 +90,13 @@ struct ActiveWorkoutState: Codable, Equatable {
             [PendingWorkoutSessionSetUpdate].self,
             forKey: .pendingSetUpdates
         ) ?? []
-        pendingSessionCompletion = try container.decodeIfPresent(
-            PendingWorkoutSessionCompletion.self,
+        let currentPendingSessionUpdate = try container.decodeIfPresent(
+            PendingWorkoutSessionUpdate.self,
+            forKey: .pendingSessionUpdate
+        )
+        let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        pendingSessionUpdate = try currentPendingSessionUpdate ?? legacyContainer.decodeIfPresent(
+            PendingWorkoutSessionUpdate.self,
             forKey: .pendingSessionCompletion
         )
         syncIssues = try container.decodeIfPresent(
@@ -111,9 +120,9 @@ struct PendingWorkoutSessionSetUpdate: Codable, Equatable, Identifiable {
     }
 }
 
-struct PendingWorkoutSessionCompletion: Codable, Equatable, Identifiable {
+struct PendingWorkoutSessionUpdate: Codable, Equatable, Identifiable {
     var sessionID: UUID
-    var payload: WorkoutSessionFinishPayload
+    var payload: WorkoutSessionStatusPayload
 
     var id: UUID {
         sessionID

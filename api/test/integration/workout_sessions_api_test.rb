@@ -141,6 +141,74 @@ class WorkoutSessionsApiTest < ActionDispatch::IntegrationTest
     assert_equal "not_performed", working.reload.completion_state
   end
 
+  test "cancels workout session without changing set results" do
+    session = WorkoutSessions::Start.call(workout_template: create_template)
+    first_set = session.exercises.first.workout_session_sets.first
+    first_set.update!(
+      actual_reps: 5,
+      actual_load_value: 30,
+      completion_state: "completed",
+      completed_at: Time.zone.parse("2026-10-02 11:45:00")
+    )
+
+    patch "/api/v1/workout_sessions/#{session.id}", params: {
+      workout_session: {
+        status: "canceled",
+        canceled_at: "2026-10-02T12:00:00Z",
+        lock_version: session.lock_version
+      }
+    }
+
+    assert_response :success
+    body = response.parsed_body.fetch("workout_session")
+    assert_equal "canceled", body.fetch("status")
+    assert_equal "2026-10-02T12:00:00.000Z", body.fetch("canceled_at")
+    assert_nil body.fetch("completed_at")
+    assert_equal "completed", body.dig("exercises", 0, "workout_session_sets", 0, "completion_state")
+    assert_equal "pending", body.dig("exercises", 0, "workout_session_sets", 1, "completion_state")
+  end
+
+  test "does not cancel completed workout history" do
+    session = WorkoutSessions::Start.call(workout_template: create_template)
+    session.update!(status: "completed", completed_at: Time.zone.parse("2026-10-02 12:00:00"))
+
+    patch "/api/v1/workout_sessions/#{session.id}", params: {
+      workout_session: {
+        status: "canceled",
+        canceled_at: "2026-10-02T13:00:00Z",
+        lock_version: session.lock_version
+      }
+    }
+
+    assert_response :unprocessable_content
+    assert_equal "status", response.parsed_body.dig("errors", 0, "field")
+    assert_equal "Status must be active", response.parsed_body.dig("errors", 0, "message")
+    assert_equal "completed", session.reload.status
+    assert_equal Time.zone.parse("2026-10-02 12:00:00"), session.completed_at
+  end
+
+  test "returns validation error for invalid canceled at timestamp" do
+    session = WorkoutSessions::Start.call(workout_template: create_template)
+
+    patch "/api/v1/workout_sessions/#{session.id}", params: {
+      workout_session: {
+        status: "canceled",
+        canceled_at: "Friday-ish",
+        lock_version: session.lock_version
+      }
+    }
+
+    assert_response :unprocessable_content
+    assert_equal(
+      {
+        "field" => "canceled_at",
+        "code" => "invalid",
+        "message" => "Canceled at must be an ISO-8601 timestamp"
+      },
+      response.parsed_body.fetch("errors").first
+    )
+  end
+
   test "keeps returned session snapshot stable after template edits" do
     template = create_template
     session = WorkoutSessions::Start.call(workout_template: template)

@@ -13,7 +13,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
 
     private let store: ActiveWorkoutStore
     private let getWorkoutSession: (UUID) async throws -> WorkoutSession
-    private let finishWorkoutSession: (UUID, WorkoutSessionFinishPayload) async throws -> WorkoutSession
+    private let updateWorkoutSession: (UUID, WorkoutSessionStatusPayload) async throws -> WorkoutSession
     private let updateWorkoutSessionSet: (UUID, WorkoutSessionSetUpdatePayload) async throws -> WorkoutSessionSet
     private let now: () -> Date
     private var pendingSetUpdates: [PendingWorkoutSessionSetUpdate] = [] {
@@ -21,7 +21,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
             refreshPendingSyncCount()
         }
     }
-    private var pendingSessionCompletion: PendingWorkoutSessionCompletion? {
+    private var pendingSessionUpdate: PendingWorkoutSessionUpdate? {
         didSet {
             refreshPendingSyncCount()
         }
@@ -39,8 +39,8 @@ final class ActiveWorkoutViewModel: ObservableObject {
         getWorkoutSession: @escaping (UUID) async throws -> WorkoutSession = { id in
             try await WorkoutSessionAPIClient.live.getWorkoutSession(id: id)
         },
-        finishWorkoutSession: @escaping (UUID, WorkoutSessionFinishPayload) async throws -> WorkoutSession = { id, payload in
-            try await WorkoutSessionAPIClient.live.finishWorkoutSession(id: id, payload: payload)
+        updateWorkoutSession: @escaping (UUID, WorkoutSessionStatusPayload) async throws -> WorkoutSession = { id, payload in
+            try await WorkoutSessionAPIClient.live.updateWorkoutSession(id: id, payload: payload)
         },
         updateWorkoutSessionSet: @escaping (UUID, WorkoutSessionSetUpdatePayload) async throws -> WorkoutSessionSet = { id, payload in
             try await WorkoutSessionAPIClient.live.updateWorkoutSessionSet(id: id, payload: payload)
@@ -49,14 +49,14 @@ final class ActiveWorkoutViewModel: ObservableObject {
         self.session = session
         self.store = store
         self.getWorkoutSession = getWorkoutSession
-        self.finishWorkoutSession = finishWorkoutSession
+        self.updateWorkoutSession = updateWorkoutSession
         self.updateWorkoutSessionSet = updateWorkoutSessionSet
         self.now = now
 
         if let state = try? store.load(), state.session.id == session.id {
             self.session = state.session
             pendingSetUpdates = state.pendingSetUpdates
-            pendingSessionCompletion = state.pendingSessionCompletion
+            pendingSessionUpdate = state.pendingSessionUpdate
             refreshPendingSyncCount()
             syncIssues = state.syncIssues
             syncIssueCount = state.syncIssues.count
@@ -149,7 +149,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
                 ActiveWorkoutState(
                     session: updatedSession,
                     pendingSetUpdates: updatedPendingSetUpdates,
-                    pendingSessionCompletion: pendingSessionCompletion,
+                    pendingSessionUpdate: pendingSessionUpdate,
                     syncIssues: updatedSyncIssues
                 )
             )
@@ -174,9 +174,9 @@ final class ActiveWorkoutViewModel: ObservableObject {
         let finishedAt = now()
         let completedAtTimestamp = finishedAt.apiTimestamp
         let updatedSession = session.finishingIncompleteWorkout(completedAt: completedAtTimestamp)
-        let pendingCompletion = PendingWorkoutSessionCompletion(
+        let pendingUpdate = PendingWorkoutSessionUpdate(
             sessionID: updatedSession.id,
-            payload: WorkoutSessionFinishPayload(
+            payload: WorkoutSessionStatusPayload(
                 status: .completed,
                 completedAt: completedAtTimestamp,
                 lockVersion: session.lockVersion
@@ -188,7 +188,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
                 ActiveWorkoutState(
                     session: updatedSession,
                     pendingSetUpdates: pendingSetUpdates,
-                    pendingSessionCompletion: pendingCompletion,
+                    pendingSessionUpdate: pendingUpdate,
                     syncIssues: syncIssues
                 )
             )
@@ -198,7 +198,113 @@ final class ActiveWorkoutViewModel: ObservableObject {
         }
 
         session = updatedSession
-        pendingSessionCompletion = pendingCompletion
+        pendingSessionUpdate = pendingUpdate
+        prepareDraftForCurrentSet()
+        await retryPendingSync()
+        return true
+    }
+
+    func skipSelectedExercise() async -> Bool {
+        guard session.status == .active,
+              let exerciseIndex = selectedExerciseIndex else {
+            return false
+        }
+
+        let pendingSetIndices = session.exercises[exerciseIndex].workoutSessionSets.indices.filter { index in
+            session.exercises[exerciseIndex].workoutSessionSets[index].completionState == .pending
+        }
+        guard !pendingSetIndices.isEmpty else {
+            errorMessage = "Exercise has no remaining sets."
+            return false
+        }
+
+        var updatedSession = session
+        var updatedPendingSetUpdates = pendingSetUpdates
+        var updatedSyncIssues = syncIssues
+
+        for setIndex in pendingSetIndices {
+            let set = updatedSession.exercises[exerciseIndex].workoutSessionSets[setIndex]
+            updatedPendingSetUpdates = updatedPendingSetUpdates.upserting(
+                PendingWorkoutSessionSetUpdate(
+                    setID: set.id,
+                    payload: WorkoutSessionSetUpdatePayload(
+                        actualReps: nil,
+                        actualLoadValue: nil,
+                        completionState: .notPerformed,
+                        completedAt: nil,
+                        lockVersion: set.lockVersion
+                    )
+                )
+            )
+            updatedSyncIssues = updatedSyncIssues.removing(setID: set.id)
+            updatedSession.exercises[exerciseIndex].workoutSessionSets[setIndex].actualReps = nil
+            updatedSession.exercises[exerciseIndex].workoutSessionSets[setIndex].actualLoadValue = nil
+            updatedSession.exercises[exerciseIndex].workoutSessionSets[setIndex].completionState = .notPerformed
+            updatedSession.exercises[exerciseIndex].workoutSessionSets[setIndex].completedAt = nil
+        }
+
+        updatedSession.exercises[exerciseIndex].status = updatedSession.exercises[exerciseIndex]
+            .workoutSessionSets
+            .contains { $0.completionState.isPerformed } ? .completed : .skipped
+
+        do {
+            try store.save(
+                ActiveWorkoutState(
+                    session: updatedSession,
+                    pendingSetUpdates: updatedPendingSetUpdates,
+                    pendingSessionUpdate: pendingSessionUpdate,
+                    syncIssues: updatedSyncIssues
+                )
+            )
+        } catch {
+            errorMessage = "Could not skip exercise."
+            return false
+        }
+
+        session = updatedSession
+        pendingSetUpdates = updatedPendingSetUpdates
+        syncIssues = updatedSyncIssues
+        restEndsAt = nil
+        prepareDraftForCurrentSet()
+        await retryPendingSync()
+        return true
+    }
+
+    func cancelWorkout() async -> Bool {
+        guard session.status == .active else {
+            return false
+        }
+
+        errorMessage = nil
+        let canceledAtTimestamp = now().apiTimestamp
+        let updatedSession = session.cancelingWorkout(canceledAt: canceledAtTimestamp)
+        let pendingUpdate = PendingWorkoutSessionUpdate(
+            sessionID: updatedSession.id,
+            payload: WorkoutSessionStatusPayload(
+                status: .canceled,
+                completedAt: nil,
+                canceledAt: canceledAtTimestamp,
+                lockVersion: session.lockVersion
+            )
+        )
+
+        do {
+            try store.save(
+                ActiveWorkoutState(
+                    session: updatedSession,
+                    pendingSetUpdates: pendingSetUpdates,
+                    pendingSessionUpdate: pendingUpdate,
+                    syncIssues: syncIssues
+                )
+            )
+        } catch {
+            errorMessage = "Could not cancel workout."
+            return false
+        }
+
+        session = updatedSession
+        pendingSessionUpdate = pendingUpdate
+        restEndsAt = nil
         prepareDraftForCurrentSet()
         await retryPendingSync()
         return true
@@ -216,7 +322,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
             return
         }
 
-        await retryPendingSessionCompletion()
+        await retryPendingSessionUpdate()
     }
 
     func retryPendingSetUpdates() async {
@@ -243,7 +349,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
                     ActiveWorkoutState(
                         session: updatedSession,
                         pendingSetUpdates: nextRemainingUpdates,
-                        pendingSessionCompletion: pendingSessionCompletion,
+                        pendingSessionUpdate: pendingSessionUpdate,
                         syncIssues: nextSyncIssues
                     )
                 )
@@ -268,7 +374,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
                             ActiveWorkoutState(
                                 session: session,
                                 pendingSetUpdates: nextRemainingUpdates,
-                                pendingSessionCompletion: pendingSessionCompletion,
+                                pendingSessionUpdate: pendingSessionUpdate,
                                 syncIssues: nextSyncIssues
                             )
                         )
@@ -294,13 +400,13 @@ final class ActiveWorkoutViewModel: ObservableObject {
         }
     }
 
-    func retryPendingSessionCompletion() async {
-        guard let pendingSessionCompletion else {
+    func retryPendingSessionUpdate() async {
+        guard let pendingSessionUpdate else {
             return
         }
 
         do {
-            let syncedSession = try await syncPendingSessionCompletion(pendingSessionCompletion)
+            let syncedSession = try await syncPendingSessionUpdate(pendingSessionUpdate)
 
             try store.save(
                 ActiveWorkoutState(
@@ -311,7 +417,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
             )
 
             session = syncedSession
-            self.pendingSessionCompletion = nil
+            self.pendingSessionUpdate = nil
             prepareDraftForCurrentSet()
 
             if pendingSetUpdates.isEmpty && syncIssues.isEmpty {
@@ -324,10 +430,10 @@ final class ActiveWorkoutViewModel: ObservableObject {
             }
 
             errorMessage = nil
-        } catch ActiveWorkoutFinishSyncError.needsAttention {
-            errorMessage = "Workout finish sync needs attention."
+        } catch ActiveWorkoutStatusSyncError.needsAttention {
+            errorMessage = "Workout \(pendingSessionUpdate.payload.actionName) sync needs attention."
         } catch {
-            errorMessage = "Workout saved locally. Finish sync pending."
+            errorMessage = "Workout saved locally. \(pendingSessionUpdate.payload.actionName.capitalized) sync pending."
         }
     }
 
@@ -365,7 +471,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
     }
 
     private func refreshPendingSyncCount() {
-        pendingSyncCount = pendingSetUpdates.count + (pendingSessionCompletion == nil ? 0 : 1)
+        pendingSyncCount = pendingSetUpdates.count + (pendingSessionUpdate == nil ? 0 : 1)
     }
 
     private func syncPendingSetUpdate(_ pendingUpdate: PendingWorkoutSessionSetUpdate) async throws -> WorkoutSessionSet {
@@ -393,23 +499,23 @@ final class ActiveWorkoutViewModel: ObservableObject {
         }
     }
 
-    private func syncPendingSessionCompletion(_ pendingCompletion: PendingWorkoutSessionCompletion) async throws -> WorkoutSession {
+    private func syncPendingSessionUpdate(_ pendingUpdate: PendingWorkoutSessionUpdate) async throws -> WorkoutSession {
         do {
-            return try await finishWorkoutSession(
-                pendingCompletion.sessionID,
-                pendingCompletion.payload
+            return try await updateWorkoutSession(
+                pendingUpdate.sessionID,
+                pendingUpdate.payload
             )
         } catch let error as WorkoutSessionAPIError where error.isStaleConflict {
-            let refreshedSession = try await getWorkoutSession(pendingCompletion.sessionID)
+            let refreshedSession = try await getWorkoutSession(pendingUpdate.sessionID)
 
-            guard refreshedSession.matches(pendingCompletion.payload) else {
-                throw ActiveWorkoutFinishSyncError.needsAttention
+            guard refreshedSession.matches(pendingUpdate.payload) else {
+                throw ActiveWorkoutStatusSyncError.needsAttention
             }
 
             return refreshedSession
         } catch {
             if error.isNonRetryableSyncFailure {
-                throw ActiveWorkoutFinishSyncError.needsAttention
+                throw ActiveWorkoutStatusSyncError.needsAttention
             }
 
             throw error
@@ -451,7 +557,7 @@ private enum ActiveWorkoutSyncError: Error {
     case setMissingFromServer
 }
 
-private enum ActiveWorkoutFinishSyncError: Error {
+private enum ActiveWorkoutStatusSyncError: Error {
     case needsAttention
 }
 
@@ -549,9 +655,24 @@ private extension WorkoutSession {
         return updatedSession
     }
 
-    func matches(_ payload: WorkoutSessionFinishPayload) -> Bool {
+    func cancelingWorkout(canceledAt: String) -> WorkoutSession {
+        var updatedSession = self
+        updatedSession.status = .canceled
+        updatedSession.completedAt = nil
+        updatedSession.canceledAt = canceledAt
+        return updatedSession
+    }
+
+    func matches(_ payload: WorkoutSessionStatusPayload) -> Bool {
         status == payload.status &&
-            completedAt == payload.completedAt
+            completedAt == payload.completedAt &&
+            canceledAt == payload.canceledAt
+    }
+}
+
+private extension WorkoutSessionStatusPayload {
+    var actionName: String {
+        status == .canceled ? "cancel" : "finish"
     }
 }
 

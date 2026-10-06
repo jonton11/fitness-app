@@ -43,7 +43,7 @@ struct WorkoutSessionAPIClient {
         return envelope.workoutSessionSet
     }
 
-    func finishWorkoutSession(id: UUID, payload: WorkoutSessionFinishPayload) async throws -> WorkoutSession {
+    func updateWorkoutSession(id: UUID, payload: WorkoutSessionStatusPayload) async throws -> WorkoutSession {
         let envelope: WorkoutSessionEnvelope = try await request(
             path: "/api/v1/workout_sessions/\(id.uuidString)",
             method: "PATCH",
@@ -97,10 +97,10 @@ struct WorkoutSessionStartPayload: Codable, Equatable {
 }
 
 struct WorkoutSessionSetUpdatePayload: Codable, Equatable {
-    var actualReps: Int
+    var actualReps: Int?
     var actualLoadValue: Double?
     var completionState: WorkoutSessionSetCompletionState
-    var completedAt: String
+    var completedAt: String?
     var lockVersion: Int
 
     enum CodingKeys: String, CodingKey {
@@ -112,14 +112,16 @@ struct WorkoutSessionSetUpdatePayload: Codable, Equatable {
     }
 }
 
-struct WorkoutSessionFinishPayload: Codable, Equatable {
+struct WorkoutSessionStatusPayload: Codable, Equatable {
     var status: WorkoutSessionStatus
-    var completedAt: String
+    var completedAt: String?
+    var canceledAt: String? = nil
     var lockVersion: Int
 
     enum CodingKeys: String, CodingKey {
         case status
         case completedAt = "completed_at"
+        case canceledAt = "canceled_at"
         case lockVersion = "lock_version"
     }
 }

@@ -1,7 +1,10 @@
 import SwiftUI
 
 struct ActiveWorkoutView: View {
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: ActiveWorkoutViewModel
+    @State private var isConfirmingCancel = false
+    @State private var isConfirmingSkip = false
 
     init(session: WorkoutSession, store: ActiveWorkoutStore = .live) {
         _viewModel = StateObject(wrappedValue: ActiveWorkoutViewModel(session: session, store: store))
@@ -67,7 +70,21 @@ struct ActiveWorkoutView: View {
                     } label: {
                         Label("Finish Workout", systemImage: "checkmark.circle")
                     }
-                    .disabled(viewModel.session.status == .completed)
+                    .disabled(viewModel.session.status != .active)
+
+                    Button {
+                        isConfirmingSkip = true
+                    } label: {
+                        Label("Skip Exercise", systemImage: "forward.end")
+                    }
+                    .disabled(viewModel.session.status != .active || viewModel.currentSet == nil)
+
+                    Button(role: .destructive) {
+                        isConfirmingCancel = true
+                    } label: {
+                        Label("Cancel Workout", systemImage: "xmark.circle")
+                    }
+                    .disabled(viewModel.session.status != .active)
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
@@ -77,12 +94,49 @@ struct ActiveWorkoutView: View {
         .task {
             await viewModel.retryPendingSync()
         }
+        .confirmationDialog(
+            skipConfirmationTitle,
+            isPresented: $isConfirmingSkip,
+            titleVisibility: .visible
+        ) {
+            Button("Skip Exercise", role: .destructive) {
+                Task {
+                    _ = await viewModel.skipSelectedExercise()
+                }
+            }
+        } message: {
+            Text("Completed sets are preserved. Remaining sets will be marked not performed.")
+        }
+        .confirmationDialog(
+            "Cancel this workout?",
+            isPresented: $isConfirmingCancel,
+            titleVisibility: .visible
+        ) {
+            Button("Cancel Workout", role: .destructive) {
+                Task {
+                    let didCancel = await viewModel.cancelWorkout()
+                    if didCancel && viewModel.pendingSyncCount == 0 {
+                        dismiss()
+                    }
+                }
+            }
+        } message: {
+            Text("Logged sets are preserved, but this workout will not affect progression.")
+        }
     }
 
     private var completedExerciseCount: Int {
         viewModel.session.exercises.filter { exercise in
             viewModel.completedSetCount(for: exercise) == exercise.workoutSessionSets.count
         }.count
+    }
+
+    private var skipConfirmationTitle: String {
+        guard let selectedExercise = viewModel.selectedExercise else {
+            return "Skip this exercise?"
+        }
+
+        return "Skip \(selectedExercise.label)?"
     }
 }
 
@@ -92,19 +146,45 @@ private struct ActiveWorkoutExerciseRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: completedSets == exercise.workoutSessionSets.count ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(completedSets == exercise.workoutSessionSets.count ? .green : .secondary)
+            Image(systemName: statusIcon)
+                .foregroundStyle(statusColor)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(exercise.label)
                     .font(.headline)
 
-                Text("\(completedSets) of \(exercise.workoutSessionSets.count) sets")
+                Text(statusText)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private var statusIcon: String {
+        if exercise.status == .skipped {
+            return "forward.end.circle.fill"
+        }
+
+        return completedSets == exercise.workoutSessionSets.count ? "checkmark.circle.fill" : "circle"
+    }
+
+    private var statusColor: Color {
+        exercise.status == .skipped || completedSets < exercise.workoutSessionSets.count ? .secondary : .green
+    }
+
+    private var statusText: String {
+        if exercise.status == .skipped {
+            return "Skipped"
+        }
+
+        let performedSets = exercise.workoutSessionSets.count { $0.completionState.isPerformed }
+        if completedSets == exercise.workoutSessionSets.count,
+           performedSets < exercise.workoutSessionSets.count {
+            return "\(performedSets) sets logged; rest skipped"
+        }
+
+        return "\(performedSets) of \(exercise.workoutSessionSets.count) sets logged"
     }
 }
 
