@@ -7,7 +7,11 @@ module Api
 
       def index
         templates = WorkoutTemplate
-                    .includes(slots: [ :default_exercise, { exercise_options: :exercise }, :set_prescriptions ])
+                    .includes(slots: [
+                      :default_exercise,
+                      :set_prescriptions,
+                      { exercise_options: [ :exercise, { workout_session_exercises: :workout_session } ] }
+                    ])
                     .order(:name)
         templates = apply_status_filter(templates)
         templates = apply_search(templates)
@@ -48,7 +52,11 @@ module Api
 
       def workout_template
         @workout_template ||= WorkoutTemplate
-                              .includes(slots: [ :default_exercise, { exercise_options: :exercise }, :set_prescriptions ])
+                              .includes(slots: [
+                                :default_exercise,
+                                :set_prescriptions,
+                                { exercise_options: [ :exercise, { workout_session_exercises: :workout_session } ] }
+                              ])
                               .find(params[:id])
       end
 

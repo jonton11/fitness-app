@@ -2,6 +2,8 @@ module Api
   module V1
     class WorkoutTemplateExerciseOptionSerializer < ApplicationSerializer
       def as_json
+        planned_working_load_value = record.planned_working_load_value
+
         {
           id: record.id,
           position: record.position,
@@ -12,6 +14,8 @@ module Api
           next_load_value: serialize_decimal(record.next_load_value),
           calculated_next_load_value: serialize_decimal(record.calculated_next_load_value),
           progression_increment: serialize_decimal(record.progression_increment),
+          planned_working_load_value: serialize_decimal(planned_working_load_value),
+          planned_session_sets: planned_session_sets(planned_working_load_value),
           created_at: serialize_time(record.created_at),
           updated_at: serialize_time(record.updated_at)
         }
@@ -27,6 +31,17 @@ module Api
           load_type: record.exercise.load_type,
           archived_at: serialize_time(record.exercise.archived_at)
         }
+      end
+
+      def planned_session_sets(planned_working_load_value)
+        record.workout_template_slot.set_prescriptions.sort_by(&:position).map do |prescription|
+          {
+            workout_template_set_prescription_id: prescription.id,
+            planned_load_value: serialize_decimal(
+              prescription.planned_load_value(planned_working_load_value)
+            )
+          }
+        end
       end
     end
   end

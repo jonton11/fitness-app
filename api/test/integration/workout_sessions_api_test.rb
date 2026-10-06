@@ -46,6 +46,95 @@ class WorkoutSessionsApiTest < ActionDispatch::IntegrationTest
     assert_equal 60.0, working.fetch("planned_load_value")
   end
 
+  test "creates an idempotent workout session from an offline client snapshot" do
+    template = create_template
+    slot = template.slots.first
+    option = slot.exercise_options.first
+    warmup, working = slot.set_prescriptions.to_a
+    session_id = SecureRandom.uuid
+    session_exercise_id = SecureRandom.uuid
+    warmup_set_id = SecureRandom.uuid
+    working_set_id = SecureRandom.uuid
+    payload = {
+      workout_session: {
+        id: session_id,
+        workout_template_id: template.id,
+        workout_template_name: "Cached Upper Body",
+        started_at: "2026-10-02T12:00:00Z",
+        exercises: [
+          {
+            id: session_exercise_id,
+            workout_template_slot_id: slot.id,
+            workout_template_exercise_option_id: option.id,
+            selected_exercise_id: incline_press.id,
+            position: 1,
+            label: "Cached Upper Chest Press",
+            selected_exercise_name: "Cached Incline Dumbbell Press",
+            selected_exercise_load_type: "lb",
+            rest_seconds: 150,
+            planned_working_load_value: 62.5,
+            progression_increment: 2.5,
+            workout_session_sets: [
+              {
+                id: warmup_set_id,
+                workout_template_set_prescription_id: warmup.id,
+                position: 1,
+                set_type: "warmup",
+                target_rep_min: 4,
+                target_rep_max: 6,
+                load_strategy: "percentage_of_working_load",
+                prescribed_load_value: 50,
+                planned_load_value: 31.25
+              },
+              {
+                id: working_set_id,
+                workout_template_set_prescription_id: working.id,
+                position: 2,
+                set_type: "working",
+                target_rep_min: 5,
+                target_rep_max: 8,
+                load_strategy: "working_load",
+                prescribed_load_value: nil,
+                planned_load_value: 62.5
+              }
+            ]
+          }
+        ]
+      }
+    }
+
+    template.update!(name: "Renamed after download", archived_at: Time.current)
+    slot.update!(label: "Changed after download", rest_seconds: 90)
+
+    assert_difference -> { WorkoutSession.count }, 1 do
+      assert_difference -> { WorkoutSessionExercise.count }, 1 do
+        assert_difference -> { WorkoutSessionSet.count }, 2 do
+          post "/api/v1/workout_sessions", params: payload
+        end
+      end
+    end
+
+    assert_response :created
+    session = response.parsed_body.fetch("workout_session")
+    assert_equal session_id, session.fetch("id")
+    assert_equal "Cached Upper Body", session.fetch("workout_template_name")
+    assert_equal "Cached Upper Chest Press", session.dig("exercises", 0, "label")
+    assert_equal "Cached Incline Dumbbell Press", session.dig("exercises", 0, "selected_exercise", "name")
+    assert_equal 150, session.dig("exercises", 0, "rest_seconds")
+    assert_equal [ warmup_set_id, working_set_id ], session.dig("exercises", 0, "workout_session_sets").map { |set| set.fetch("id") }
+
+    assert_no_difference [
+      -> { WorkoutSession.count },
+      -> { WorkoutSessionExercise.count },
+      -> { WorkoutSessionSet.count }
+    ] do
+      post "/api/v1/workout_sessions", params: payload
+    end
+
+    assert_response :success
+    assert_equal session, response.parsed_body.fetch("workout_session")
+  end
+
   test "shows workout session snapshot" do
     session = WorkoutSessions::Start.call(workout_template: create_template)
 

@@ -55,7 +55,7 @@ module WorkoutSessions
           target_rep_max: prescription.rep_max,
           load_strategy: prescription.load_strategy,
           prescribed_load_value: prescription.load_value,
-          planned_load_value: planned_load_for(prescription, planned_working_load_value)
+          planned_load_value: prescription.planned_load_value(planned_working_load_value)
         )
       end
     end
@@ -63,19 +63,6 @@ module WorkoutSessions
     def default_option_for(slot)
       slot.exercise_options.find(&:is_default?) ||
         slot.exercise_options.find { |option| option.exercise_id == slot.default_exercise_id }
-    end
-
-    def planned_load_for(prescription, planned_working_load_value)
-      case prescription.load_strategy
-      when "working_load"
-        planned_working_load_value
-      when "percentage_of_working_load"
-        return nil if planned_working_load_value.blank? || prescription.load_value.blank?
-
-        planned_working_load_value * prescription.load_value / 100
-      when "explicit"
-        prescription.load_value
-      end
     end
   end
 end

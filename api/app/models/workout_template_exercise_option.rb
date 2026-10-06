@@ -20,6 +20,10 @@ class WorkoutTemplateExerciseOption < ApplicationRecord
   private
 
   def completed_history?
+    if workout_session_exercises.loaded?
+      return workout_session_exercises.any? { |session_exercise| session_exercise.workout_session.status == "completed" }
+    end
+
     workout_session_exercises.joins(:workout_session).where(workout_sessions: { status: "completed" }).exists?
   end
 

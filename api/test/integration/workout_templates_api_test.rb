@@ -63,6 +63,20 @@ class WorkoutTemplatesApiTest < ActionDispatch::IntegrationTest
     assert_equal 65.0, default_option.fetch("next_load_value")
     assert_nil default_option.fetch("calculated_next_load_value")
     assert_equal 5.0, default_option.fetch("progression_increment")
+    assert_equal 60.0, default_option.fetch("planned_working_load_value")
+    assert_equal(
+      [
+        {
+          "workout_template_set_prescription_id" => slot.fetch("set_prescriptions").first.fetch("id"),
+          "planned_load_value" => 39.0
+        },
+        {
+          "workout_template_set_prescription_id" => slot.fetch("set_prescriptions").second.fetch("id"),
+          "planned_load_value" => 60.0
+        }
+      ],
+      default_option.fetch("planned_session_sets")
+    )
 
     warmup = slot.fetch("set_prescriptions").first
     assert_equal "warmup", warmup.fetch("set_type")
