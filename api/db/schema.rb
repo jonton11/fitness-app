@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_05_010000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_06_010000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -47,6 +47,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_010000) do
     t.string "status", default: "pending", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "lock_version", default: 0, null: false
     t.index ["selected_exercise_id"], name: "index_workout_session_exercises_on_selected_exercise_id"
     t.index ["workout_session_id", "position"], name: "index_session_exercises_on_session_and_position"
     t.index ["workout_session_id"], name: "index_workout_session_exercises_on_workout_session_id"

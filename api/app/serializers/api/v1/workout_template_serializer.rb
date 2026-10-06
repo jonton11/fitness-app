@@ -27,24 +27,10 @@ module Api
           created_at: serialize_time(slot.created_at),
           updated_at: serialize_time(slot.updated_at),
           lock_version: slot.lock_version,
-          exercise_options: slot.exercise_options.sort_by(&:position).map { |option| serialize_option(option) },
+          exercise_options: slot.exercise_options.sort_by(&:position).map do |option|
+            WorkoutTemplateExerciseOptionSerializer.new(option).as_json
+          end,
           set_prescriptions: slot.set_prescriptions.sort_by(&:position).map { |prescription| serialize_set_prescription(prescription) }
-        }
-      end
-
-      def serialize_option(option)
-        {
-          id: option.id,
-          position: option.position,
-          exercise_id: option.exercise_id,
-          exercise: serialize_exercise(option.exercise),
-          is_default: option.is_default,
-          starting_load_value: serialize_decimal(option.starting_load_value),
-          next_load_value: serialize_decimal(option.next_load_value),
-          calculated_next_load_value: serialize_decimal(option.calculated_next_load_value),
-          progression_increment: serialize_decimal(option.progression_increment),
-          created_at: serialize_time(option.created_at),
-          updated_at: serialize_time(option.updated_at)
         }
       end
 

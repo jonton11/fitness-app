@@ -6,7 +6,9 @@ module Api
       rescue_from ActiveRecord::StaleObjectError, with: :render_conflict
 
       def index
-        templates = WorkoutTemplate.includes(slots: [ :default_exercise, :exercise_options, :set_prescriptions ]).order(:name)
+        templates = WorkoutTemplate
+                    .includes(slots: [ :default_exercise, { exercise_options: :exercise }, :set_prescriptions ])
+                    .order(:name)
         templates = apply_status_filter(templates)
         templates = apply_search(templates)
         total = templates.count
@@ -46,7 +48,7 @@ module Api
 
       def workout_template
         @workout_template ||= WorkoutTemplate
-                              .includes(slots: [ :default_exercise, :exercise_options, :set_prescriptions ])
+                              .includes(slots: [ :default_exercise, { exercise_options: :exercise }, :set_prescriptions ])
                               .find(params[:id])
       end
 
