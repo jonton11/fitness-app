@@ -40,6 +40,7 @@ struct WorkoutSessionExercise: Codable, Equatable, Identifiable {
     var plannedWorkingLoadValue: Double?
     var progressionIncrement: Double?
     var status: WorkoutSessionExerciseStatus
+    var lockVersion: Int
     var createdAt: String
     var updatedAt: String
     var workoutSessionSets: [WorkoutSessionSet]
@@ -56,9 +57,35 @@ struct WorkoutSessionExercise: Codable, Equatable, Identifiable {
         case plannedWorkingLoadValue = "planned_working_load_value"
         case progressionIncrement = "progression_increment"
         case status
+        case lockVersion = "lock_version"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case workoutSessionSets = "workout_session_sets"
+    }
+}
+
+extension WorkoutSessionExercise {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = try container.decode(UUID.self, forKey: .id)
+        workoutTemplateSlotID = try container.decodeIfPresent(UUID.self, forKey: .workoutTemplateSlotID)
+        workoutTemplateExerciseOptionID = try container.decodeIfPresent(
+            UUID.self,
+            forKey: .workoutTemplateExerciseOptionID
+        )
+        position = try container.decode(Int.self, forKey: .position)
+        label = try container.decode(String.self, forKey: .label)
+        selectedExerciseID = try container.decode(UUID.self, forKey: .selectedExerciseID)
+        selectedExercise = try container.decode(WorkoutSessionExerciseSummary.self, forKey: .selectedExercise)
+        restSeconds = try container.decode(Int.self, forKey: .restSeconds)
+        plannedWorkingLoadValue = try container.decodeIfPresent(Double.self, forKey: .plannedWorkingLoadValue)
+        progressionIncrement = try container.decodeIfPresent(Double.self, forKey: .progressionIncrement)
+        status = try container.decode(WorkoutSessionExerciseStatus.self, forKey: .status)
+        lockVersion = try container.decodeIfPresent(Int.self, forKey: .lockVersion) ?? 0
+        createdAt = try container.decode(String.self, forKey: .createdAt)
+        updatedAt = try container.decode(String.self, forKey: .updatedAt)
+        workoutSessionSets = try container.decode([WorkoutSessionSet].self, forKey: .workoutSessionSets)
     }
 }
 

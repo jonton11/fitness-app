@@ -3,6 +3,7 @@ import Foundation
 @MainActor
 final class ActiveWorkoutViewModel: ObservableObject {
     @Published private(set) var session: WorkoutSession
+    @Published private(set) var workoutTemplate: WorkoutTemplate?
     @Published private(set) var selectedExerciseID: UUID?
     @Published var repDraft = ""
     @Published var loadDraft = ""
@@ -14,7 +15,9 @@ final class ActiveWorkoutViewModel: ObservableObject {
     private let store: ActiveWorkoutStore
     private let getWorkoutSession: (UUID) async throws -> WorkoutSession
     private let updateWorkoutSession: (UUID, WorkoutSessionStatusPayload) async throws -> WorkoutSession
+    private let updateWorkoutSessionExercise: (UUID, WorkoutSessionExerciseUpdatePayload) async throws -> WorkoutSessionExercise
     private let updateWorkoutSessionSet: (UUID, WorkoutSessionSetUpdatePayload) async throws -> WorkoutSessionSet
+    private let createExerciseOption: (WorkoutTemplateExerciseOptionCreatePayload) async throws -> WorkoutTemplateExerciseOption
     private let now: () -> Date
     private var pendingSetUpdates: [PendingWorkoutSessionSetUpdate] = [] {
         didSet {
@@ -34,6 +37,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
 
     init(
         session: WorkoutSession,
+        workoutTemplate: WorkoutTemplate? = nil,
         store: ActiveWorkoutStore = .live,
         now: @escaping () -> Date = Date.init,
         getWorkoutSession: @escaping (UUID) async throws -> WorkoutSession = { id in
@@ -42,15 +46,24 @@ final class ActiveWorkoutViewModel: ObservableObject {
         updateWorkoutSession: @escaping (UUID, WorkoutSessionStatusPayload) async throws -> WorkoutSession = { id, payload in
             try await WorkoutSessionAPIClient.live.updateWorkoutSession(id: id, payload: payload)
         },
+        updateWorkoutSessionExercise: @escaping (UUID, WorkoutSessionExerciseUpdatePayload) async throws -> WorkoutSessionExercise = { id, payload in
+            try await WorkoutSessionAPIClient.live.updateWorkoutSessionExercise(id: id, payload: payload)
+        },
         updateWorkoutSessionSet: @escaping (UUID, WorkoutSessionSetUpdatePayload) async throws -> WorkoutSessionSet = { id, payload in
             try await WorkoutSessionAPIClient.live.updateWorkoutSessionSet(id: id, payload: payload)
+        },
+        createExerciseOption: @escaping (WorkoutTemplateExerciseOptionCreatePayload) async throws -> WorkoutTemplateExerciseOption = { payload in
+            try await WorkoutTemplateAPIClient.live.createExerciseOption(payload)
         }
     ) {
         self.session = session
+        self.workoutTemplate = workoutTemplate
         self.store = store
         self.getWorkoutSession = getWorkoutSession
         self.updateWorkoutSession = updateWorkoutSession
+        self.updateWorkoutSessionExercise = updateWorkoutSessionExercise
         self.updateWorkoutSessionSet = updateWorkoutSessionSet
+        self.createExerciseOption = createExerciseOption
         self.now = now
 
         if let state = try? store.load(), state.session.id == session.id {
@@ -84,6 +97,30 @@ final class ActiveWorkoutViewModel: ObservableObject {
         session.exercises.allSatisfy { exercise in
             exercise.workoutSessionSets.allSatisfy { $0.completionState != .pending }
         }
+    }
+
+    var substitutionOptions: [WorkoutTemplateExerciseOption] {
+        guard let selectedExercise,
+              let workoutTemplateSlotID = selectedExercise.workoutTemplateSlotID,
+              let slot = workoutTemplate?.slots.first(where: { $0.id == workoutTemplateSlotID }) else {
+            return []
+        }
+
+        return slot.exerciseOptions
+            .filter { option in
+                option.exerciseID != selectedExercise.selectedExerciseID && option.exercise.archivedAt == nil
+            }
+            .sorted { $0.position < $1.position }
+    }
+
+    var canModifySelectedExercise: Bool {
+        guard session.status == .active,
+              let selectedExercise,
+              selectedExercise.workoutTemplateSlotID != nil else {
+            return false
+        }
+
+        return selectedExercise.workoutSessionSets.allSatisfy { $0.completionState == .pending }
     }
 
     func selectExercise(_ exercise: WorkoutSessionExercise) {
@@ -308,6 +345,72 @@ final class ActiveWorkoutViewModel: ObservableObject {
         prepareDraftForCurrentSet()
         await retryPendingSync()
         return true
+    }
+
+    func substituteSelectedExercise(with option: WorkoutTemplateExerciseOption) async -> Bool {
+        guard canModifySelectedExercise,
+              let selectedExercise else {
+            errorMessage = "Exercise cannot be changed after logging a set."
+            return false
+        }
+
+        errorMessage = nil
+
+        do {
+            let updatedExercise = try await updateWorkoutSessionExercise(
+                selectedExercise.id,
+                WorkoutSessionExerciseUpdatePayload(
+                    workoutTemplateExerciseOptionID: option.id,
+                    lockVersion: selectedExercise.lockVersion
+                )
+            )
+            let updatedSession = session.merging(updatedExercise)
+            try store.save(
+                ActiveWorkoutState(
+                    session: updatedSession,
+                    pendingSetUpdates: pendingSetUpdates,
+                    pendingSessionUpdate: pendingSessionUpdate,
+                    syncIssues: syncIssues
+                )
+            )
+            session = updatedSession
+            prepareDraftForCurrentSet()
+            return true
+        } catch {
+            errorMessage = "Could not swap exercise."
+            return false
+        }
+    }
+
+    func addAndSelectSubstitute(
+        form: ExerciseFormState,
+        startingLoadValue: Double?,
+        progressionIncrement: Double?
+    ) async -> Bool {
+        guard canModifySelectedExercise,
+              let workoutTemplateSlotID = selectedExercise?.workoutTemplateSlotID else {
+            errorMessage = "Exercise cannot be changed after logging a set."
+            return false
+        }
+
+        errorMessage = nil
+
+        do {
+            let option = try await createExerciseOption(
+                WorkoutTemplateExerciseOptionCreatePayload(
+                    workoutTemplateSlotID: workoutTemplateSlotID,
+                    exerciseID: nil,
+                    exercise: form.payload(lockVersion: nil),
+                    startingLoadValue: startingLoadValue,
+                    progressionIncrement: progressionIncrement
+                )
+            )
+            upsertExerciseOption(option, slotID: workoutTemplateSlotID)
+            return await substituteSelectedExercise(with: option)
+        } catch {
+            errorMessage = "Could not add exercise."
+            return false
+        }
     }
 
     func retryPendingSync() async {
@@ -546,6 +649,21 @@ final class ActiveWorkoutViewModel: ObservableObject {
 
         return load
     }
+
+    private func upsertExerciseOption(_ option: WorkoutTemplateExerciseOption, slotID: UUID) {
+        guard var template = workoutTemplate,
+              let slotIndex = template.slots.firstIndex(where: { $0.id == slotID }) else {
+            return
+        }
+
+        if let optionIndex = template.slots[slotIndex].exerciseOptions.firstIndex(where: { $0.id == option.id }) {
+            template.slots[slotIndex].exerciseOptions[optionIndex] = option
+        } else {
+            template.slots[slotIndex].exerciseOptions.append(option)
+        }
+
+        workoutTemplate = template
+    }
 }
 
 private enum ActiveWorkoutValidationError: Error {
@@ -628,6 +746,17 @@ private extension WorkoutSession {
             return updatedSession
         }
 
+        return updatedSession
+    }
+
+    func merging(_ syncedExercise: WorkoutSessionExercise) -> WorkoutSession {
+        var updatedSession = self
+
+        guard let exerciseIndex = updatedSession.exercises.firstIndex(where: { $0.id == syncedExercise.id }) else {
+            return updatedSession
+        }
+
+        updatedSession.exercises[exerciseIndex] = syncedExercise
         return updatedSession
     }
 

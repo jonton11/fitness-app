@@ -27,6 +27,7 @@
 		0A0000010000000000000022 /* ActiveWorkoutStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000022 /* ActiveWorkoutStore.swift */; };
 		0A0000010000000000000023 /* ActiveWorkoutViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000023 /* ActiveWorkoutViewModel.swift */; };
 		0A0000010000000000000024 /* ActiveWorkoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000024 /* ActiveWorkoutView.swift */; };
+		0A0000010000000000000025 /* WorkoutExerciseSubstitutionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000025 /* WorkoutExerciseSubstitutionView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -62,6 +63,7 @@
 		0A0000020000000000000022 /* ActiveWorkoutStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutStore.swift; sourceTree = "<group>"; };
 		0A0000020000000000000023 /* ActiveWorkoutViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutViewModel.swift; sourceTree = "<group>"; };
 		0A0000020000000000000024 /* ActiveWorkoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutView.swift; sourceTree = "<group>"; };
+		0A0000020000000000000025 /* WorkoutExerciseSubstitutionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutExerciseSubstitutionView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -194,6 +196,7 @@
 			children = (
 				0A0000020000000000000023 /* ActiveWorkoutViewModel.swift */,
 				0A0000020000000000000024 /* ActiveWorkoutView.swift */,
+				0A0000020000000000000025 /* WorkoutExerciseSubstitutionView.swift */,
 			);
 			path = ActiveWorkout;
 			sourceTree = "<group>";
@@ -315,6 +318,7 @@
 				0A000001000000000000001B /* WorkoutTemplatesView.swift in Sources */,
 				0A0000010000000000000023 /* ActiveWorkoutViewModel.swift in Sources */,
 				0A0000010000000000000024 /* ActiveWorkoutView.swift in Sources */,
+				0A0000010000000000000025 /* WorkoutExerciseSubstitutionView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

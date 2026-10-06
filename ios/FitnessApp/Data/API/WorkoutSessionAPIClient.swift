@@ -43,6 +43,19 @@ struct WorkoutSessionAPIClient {
         return envelope.workoutSessionSet
     }
 
+    func updateWorkoutSessionExercise(
+        id: UUID,
+        payload: WorkoutSessionExerciseUpdatePayload
+    ) async throws -> WorkoutSessionExercise {
+        let envelope: WorkoutSessionExerciseEnvelope = try await request(
+            path: "/api/v1/workout_session_exercises/\(id.uuidString)",
+            method: "PATCH",
+            body: WorkoutSessionExerciseRequestEnvelope(workoutSessionExercise: payload)
+        )
+
+        return envelope.workoutSessionExercise
+    }
+
     func updateWorkoutSession(id: UUID, payload: WorkoutSessionStatusPayload) async throws -> WorkoutSession {
         let envelope: WorkoutSessionEnvelope = try await request(
             path: "/api/v1/workout_sessions/\(id.uuidString)",
@@ -112,6 +125,16 @@ struct WorkoutSessionSetUpdatePayload: Codable, Equatable {
     }
 }
 
+struct WorkoutSessionExerciseUpdatePayload: Codable, Equatable {
+    var workoutTemplateExerciseOptionID: UUID
+    var lockVersion: Int
+
+    enum CodingKeys: String, CodingKey {
+        case workoutTemplateExerciseOptionID = "workout_template_exercise_option_id"
+        case lockVersion = "lock_version"
+    }
+}
+
 struct WorkoutSessionStatusPayload: Codable, Equatable {
     var status: WorkoutSessionStatus
     var completedAt: String?
@@ -155,5 +178,21 @@ private struct WorkoutSessionSetRequestEnvelope: Encodable {
 
     enum CodingKeys: String, CodingKey {
         case workoutSessionSet = "workout_session_set"
+    }
+}
+
+private struct WorkoutSessionExerciseRequestEnvelope: Encodable {
+    var workoutSessionExercise: WorkoutSessionExerciseUpdatePayload
+
+    enum CodingKeys: String, CodingKey {
+        case workoutSessionExercise = "workout_session_exercise"
+    }
+}
+
+private struct WorkoutSessionExerciseEnvelope: Decodable {
+    var workoutSessionExercise: WorkoutSessionExercise
+
+    enum CodingKeys: String, CodingKey {
+        case workoutSessionExercise = "workout_session_exercise"
     }
 }

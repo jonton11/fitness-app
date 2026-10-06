@@ -272,6 +272,131 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertEqual(set.lockVersion, 3)
     }
 
+    func testWorkoutSessionAPIClientSubstitutesSessionExerciseWithRailsEnvelope() async throws {
+        let sessionExerciseID = UUID()
+        let optionID = UUID()
+        let requestBox = URLRequestBox()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolStub.self]
+        let apiClient = WorkoutSessionAPIClient(
+            baseURL: URL(string: "https://fitness.example")!,
+            session: URLSession(configuration: configuration)
+        )
+        let payload = WorkoutSessionExerciseUpdatePayload(
+            workoutTemplateExerciseOptionID: optionID,
+            lockVersion: 2
+        )
+
+        URLProtocolStub.requestHandler = { request in
+            requestBox.request = request
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            var exercise = self.workoutSessionFixture().exercises[0]
+            exercise.workoutTemplateExerciseOptionID = optionID
+            exercise.selectedExerciseID = UUID()
+            exercise.selectedExercise.name = "Incline Smith Press"
+            exercise.plannedWorkingLoadValue = 80
+            exercise.lockVersion = payload.lockVersion + 1
+            let responseData = try JSONEncoder().encode([
+                "workout_session_exercise": exercise
+            ])
+
+            return (response, responseData)
+        }
+        defer {
+            URLProtocolStub.requestHandler = nil
+        }
+
+        let exercise = try await apiClient.updateWorkoutSessionExercise(
+            id: sessionExerciseID,
+            payload: payload
+        )
+
+        let request = try XCTUnwrap(requestBox.request)
+        let bodyData = try XCTUnwrap(request.httpBody ?? request.httpBodyStream?.readData())
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+        let bodyPayload = try XCTUnwrap(body["workout_session_exercise"] as? [String: Any])
+
+        XCTAssertEqual(request.httpMethod, "PATCH")
+        XCTAssertEqual(request.url?.path, "/api/v1/workout_session_exercises/\(sessionExerciseID.uuidString)")
+        XCTAssertEqual(bodyPayload["workout_template_exercise_option_id"] as? String, optionID.uuidString)
+        XCTAssertEqual(bodyPayload["lock_version"] as? Int, 2)
+        XCTAssertEqual(exercise.selectedExercise.name, "Incline Smith Press")
+        XCTAssertEqual(exercise.plannedWorkingLoadValue, 80)
+        XCTAssertEqual(exercise.lockVersion, 3)
+    }
+
+    func testWorkoutTemplateAPIClientCreatesNestedExerciseOption() async throws {
+        let slotID = UUID()
+        let exerciseID = UUID()
+        let option = workoutTemplateExerciseOptionFixture(
+            exerciseID: exerciseID,
+            name: "Incline Machine Press"
+        )
+        let requestBox = URLRequestBox()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolStub.self]
+        let apiClient = WorkoutTemplateAPIClient(
+            baseURL: URL(string: "https://fitness.example")!,
+            session: URLSession(configuration: configuration)
+        )
+        let exercisePayload = ExercisePayload(
+            name: "Incline Machine Press",
+            primaryMuscleGroup: "Chest",
+            secondaryMuscleGroups: ["Shoulders"],
+            loadType: .machineStack,
+            notes: nil,
+            externalURL: nil,
+            lockVersion: nil
+        )
+        let payload = WorkoutTemplateExerciseOptionCreatePayload(
+            workoutTemplateSlotID: slotID,
+            exerciseID: nil,
+            exercise: exercisePayload,
+            startingLoadValue: 80,
+            progressionIncrement: 10
+        )
+
+        URLProtocolStub.requestHandler = { request in
+            requestBox.request = request
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 201,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            let responseData = try JSONEncoder().encode([
+                "workout_template_exercise_option": option
+            ])
+
+            return (response, responseData)
+        }
+        defer {
+            URLProtocolStub.requestHandler = nil
+        }
+
+        let createdOption = try await apiClient.createExerciseOption(payload)
+
+        let request = try XCTUnwrap(requestBox.request)
+        let bodyData = try XCTUnwrap(request.httpBody ?? request.httpBodyStream?.readData())
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+        let bodyPayload = try XCTUnwrap(body["workout_template_exercise_option"] as? [String: Any])
+        let nestedExercise = try XCTUnwrap(bodyPayload["exercise"] as? [String: Any])
+
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.path, "/api/v1/workout_template_exercise_options")
+        XCTAssertEqual(bodyPayload["workout_template_slot_id"] as? String, slotID.uuidString)
+        XCTAssertEqual(nestedExercise["name"] as? String, "Incline Machine Press")
+        XCTAssertEqual(nestedExercise["load_type"] as? String, "machine_stack")
+        XCTAssertEqual(bodyPayload["starting_load_value"] as? Double, 80)
+        XCTAssertEqual(bodyPayload["progression_increment"] as? Double, 10)
+        XCTAssertEqual(createdOption, option)
+    }
+
     func testWorkoutSessionAPIClientFinishesSessionWithRailsEnvelope() async throws {
         let sessionID = UUID()
         let requestBox = URLRequestBox()
@@ -395,8 +520,12 @@ final class FitnessAppTests: XCTestCase {
         )
         let sessionData = try JSONEncoder().encode(session)
         let pendingUpdateData = try JSONEncoder().encode(pendingUpdate)
+        var sessionObject = try XCTUnwrap(JSONSerialization.jsonObject(with: sessionData) as? [String: Any])
+        var exercises = try XCTUnwrap(sessionObject["exercises"] as? [[String: Any]])
+        exercises[0].removeValue(forKey: "lock_version")
+        sessionObject["exercises"] = exercises
         let stateData = try JSONSerialization.data(withJSONObject: [
-            "session": try XCTUnwrap(JSONSerialization.jsonObject(with: sessionData) as? [String: Any]),
+            "session": sessionObject,
             "pending_set_updates": [],
             "pending_session_completion": try XCTUnwrap(
                 JSONSerialization.jsonObject(with: pendingUpdateData) as? [String: Any]
@@ -407,6 +536,7 @@ final class FitnessAppTests: XCTestCase {
         let state = try JSONDecoder().decode(ActiveWorkoutState.self, from: stateData)
 
         XCTAssertEqual(state.pendingSessionUpdate, pendingUpdate)
+        XCTAssertEqual(state.session.exercises[0].lockVersion, 0)
     }
 
     func testWorkoutSessionAPIClientIncludesResponseStatusForFailures() async throws {
@@ -886,6 +1016,113 @@ final class FitnessAppTests: XCTestCase {
     }
 
     @MainActor
+    func testActiveWorkoutSubstitutesPendingExerciseAndPersistsServerPlan() async {
+        let templateID = UUID()
+        let slotID = UUID()
+        let option = workoutTemplateExerciseOptionFixture(
+            exerciseID: UUID(),
+            name: "Incline Smith Press"
+        )
+        var session = workoutSessionFixture(templateID: templateID)
+        session.exercises[0].workoutTemplateSlotID = slotID
+        session.exercises[0].lockVersion = 4
+        let box = ActiveWorkoutStoreBox(state: nil)
+        let template = workoutTemplateFixture(
+            id: templateID,
+            slotID: slotID,
+            exerciseOptions: [option]
+        )
+        let viewModel = ActiveWorkoutViewModel(
+            session: session,
+            workoutTemplate: template,
+            store: activeWorkoutStore(box: box),
+            updateWorkoutSessionExercise: { id, payload in
+                XCTAssertEqual(id, session.exercises[0].id)
+                XCTAssertEqual(payload.workoutTemplateExerciseOptionID, option.id)
+                XCTAssertEqual(payload.lockVersion, 4)
+
+                var updatedExercise = session.exercises[0]
+                updatedExercise.workoutTemplateExerciseOptionID = option.id
+                updatedExercise.selectedExerciseID = option.exerciseID
+                updatedExercise.selectedExercise = WorkoutSessionExerciseSummary(
+                    id: option.exerciseID,
+                    name: option.exercise.name,
+                    loadType: option.exercise.loadType
+                )
+                updatedExercise.plannedWorkingLoadValue = 80
+                updatedExercise.progressionIncrement = 10
+                updatedExercise.lockVersion = 5
+                updatedExercise.workoutSessionSets[0].plannedLoadValue = 80
+                updatedExercise.workoutSessionSets[1].plannedLoadValue = 80
+                return updatedExercise
+            }
+        )
+
+        let didSubstitute = await viewModel.substituteSelectedExercise(with: option)
+
+        XCTAssertTrue(didSubstitute)
+        XCTAssertEqual(viewModel.session.exercises[0].selectedExercise.name, "Incline Smith Press")
+        XCTAssertEqual(viewModel.session.exercises[0].plannedWorkingLoadValue, 80)
+        XCTAssertEqual(viewModel.session.exercises[0].lockVersion, 5)
+        XCTAssertEqual(box.state?.session, viewModel.session)
+    }
+
+    @MainActor
+    func testActiveWorkoutCreatesAndSelectsNewSubstitute() async {
+        let templateID = UUID()
+        let slotID = UUID()
+        let createdOption = workoutTemplateExerciseOptionFixture(
+            exerciseID: UUID(),
+            name: "Incline Machine Press"
+        )
+        var session = workoutSessionFixture(templateID: templateID)
+        session.exercises[0].workoutTemplateSlotID = slotID
+        let template = workoutTemplateFixture(id: templateID, slotID: slotID)
+        let box = ActiveWorkoutStoreBox(state: nil)
+        var form = ExerciseFormState()
+        form.name = "Incline Machine Press"
+        form.primaryMuscleGroup = "Chest"
+        form.loadType = .machineStack
+        let viewModel = ActiveWorkoutViewModel(
+            session: session,
+            workoutTemplate: template,
+            store: activeWorkoutStore(box: box),
+            updateWorkoutSessionExercise: { _, payload in
+                XCTAssertEqual(payload.workoutTemplateExerciseOptionID, createdOption.id)
+                var updatedExercise = session.exercises[0]
+                updatedExercise.workoutTemplateExerciseOptionID = createdOption.id
+                updatedExercise.selectedExerciseID = createdOption.exerciseID
+                updatedExercise.selectedExercise = WorkoutSessionExerciseSummary(
+                    id: createdOption.exerciseID,
+                    name: createdOption.exercise.name,
+                    loadType: createdOption.exercise.loadType
+                )
+                updatedExercise.lockVersion += 1
+                return updatedExercise
+            },
+            createExerciseOption: { payload in
+                XCTAssertEqual(payload.workoutTemplateSlotID, slotID)
+                XCTAssertEqual(payload.exercise?.name, "Incline Machine Press")
+                XCTAssertEqual(payload.exercise?.loadType, .machineStack)
+                XCTAssertEqual(payload.startingLoadValue, 80)
+                XCTAssertEqual(payload.progressionIncrement, 10)
+                return createdOption
+            }
+        )
+
+        let didAdd = await viewModel.addAndSelectSubstitute(
+            form: form,
+            startingLoadValue: 80,
+            progressionIncrement: 10
+        )
+
+        XCTAssertTrue(didAdd)
+        XCTAssertEqual(viewModel.session.exercises[0].selectedExercise.name, "Incline Machine Press")
+        XCTAssertTrue(viewModel.workoutTemplate?.slots[0].exerciseOptions.contains(createdOption) == true)
+        XCTAssertEqual(box.state?.session, viewModel.session)
+    }
+
+    @MainActor
     func testActiveWorkoutFinishPersistsLocallyWhenServerIsUnavailable() async {
         let box = ActiveWorkoutStoreBox(state: nil)
         var session = workoutSessionFixture()
@@ -1229,6 +1466,7 @@ final class FitnessAppTests: XCTestCase {
                     plannedWorkingLoadValue: 65,
                     progressionIncrement: 5,
                     status: .pending,
+                    lockVersion: 0,
                     createdAt: "2026-10-03T12:00:00.000Z",
                     updatedAt: "2026-10-03T12:00:00.000Z",
                     workoutSessionSets: [
@@ -1271,10 +1509,12 @@ final class FitnessAppTests: XCTestCase {
         )
     }
 
-    private func workoutTemplateFixture() -> WorkoutTemplate {
-        let templateID = UUID()
+    private func workoutTemplateFixture(
+        id templateID: UUID = UUID(),
+        slotID: UUID = UUID(),
+        exerciseOptions: [WorkoutTemplateExerciseOption] = []
+    ) -> WorkoutTemplate {
         let exerciseID = UUID()
-        let slotID = UUID()
 
         return WorkoutTemplate(
             id: templateID,
@@ -1301,10 +1541,29 @@ final class FitnessAppTests: XCTestCase {
                     createdAt: "2026-10-03T12:00:00.000Z",
                     updatedAt: "2026-10-03T12:00:00.000Z",
                     lockVersion: 0,
-                    exerciseOptions: [],
+                    exerciseOptions: exerciseOptions,
                     setPrescriptions: []
                 )
             ]
+        )
+    }
+
+    private func workoutTemplateExerciseOptionFixture(
+        exerciseID: UUID,
+        name: String
+    ) -> WorkoutTemplateExerciseOption {
+        WorkoutTemplateExerciseOption(
+            id: UUID(),
+            position: 2,
+            exerciseID: exerciseID,
+            exercise: templateExerciseSummary(id: exerciseID, name: name),
+            isDefault: false,
+            startingLoadValue: 80,
+            nextLoadValue: nil,
+            calculatedNextLoadValue: nil,
+            progressionIncrement: 10,
+            createdAt: "2026-10-03T12:00:00.000Z",
+            updatedAt: "2026-10-03T12:00:00.000Z"
         )
     }
 }

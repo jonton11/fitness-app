@@ -20,26 +20,7 @@ struct ExerciseFormView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Exercise") {
-                    TextField("Name", text: $form.name)
-                    TextField("Primary muscle group", text: $form.primaryMuscleGroup)
-                    TextField("Secondary muscle groups", text: $form.secondaryMuscleGroups)
-
-                    Picker("Load type", selection: $form.loadType) {
-                        ForEach(LoadType.allCases) { loadType in
-                            Text(loadType.label).tag(loadType)
-                        }
-                    }
-                }
-
-                Section("Reference") {
-                    TextField("External URL", text: $form.externalURL)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-
-                    TextField("Notes", text: $form.notes, axis: .vertical)
-                        .lineLimit(4, reservesSpace: true)
-                }
+                ExerciseFormFields(form: $form)
             }
             .navigationTitle(exercise == nil ? "New Exercise" : "Edit Exercise")
             .toolbar {
@@ -62,6 +43,33 @@ struct ExerciseFormView: View {
                     .disabled(isSaving)
                 }
             }
+        }
+    }
+}
+
+struct ExerciseFormFields: View {
+    @Binding var form: ExerciseFormState
+
+    var body: some View {
+        Section("Exercise") {
+            TextField("Name", text: $form.name)
+            TextField("Primary muscle group", text: $form.primaryMuscleGroup)
+            TextField("Secondary muscle groups", text: $form.secondaryMuscleGroups)
+
+            Picker("Load type", selection: $form.loadType) {
+                ForEach(LoadType.allCases) { loadType in
+                    Text(loadType.label).tag(loadType)
+                }
+            }
+        }
+
+        Section("Reference") {
+            TextField("External URL", text: $form.externalURL)
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+
+            TextField("Notes", text: $form.notes, axis: .vertical)
+                .lineLimit(4, reservesSpace: true)
         }
     }
 }
