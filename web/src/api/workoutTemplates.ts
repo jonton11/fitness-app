@@ -16,6 +16,7 @@ export type WorkoutTemplateExerciseOption = {
   is_default: boolean
   starting_load_value: number | null
   next_load_value: number | null
+  calculated_next_load_value: number | null
   progression_increment: number | null
   created_at: string
   updated_at: string

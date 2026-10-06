@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_02_010000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_05_010000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -122,11 +122,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_010000) do
     t.decimal "progression_increment", precision: 10, scale: 2
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.decimal "calculated_next_load_value", precision: 10, scale: 2
     t.index ["exercise_id"], name: "index_workout_template_exercise_options_on_exercise_id"
     t.index ["workout_template_slot_id", "exercise_id"], name: "index_template_options_on_slot_and_exercise", unique: true
     t.index ["workout_template_slot_id", "position"], name: "index_template_options_on_slot_and_position"
     t.index ["workout_template_slot_id"], name: "idx_on_workout_template_slot_id_915eabb622"
     t.check_constraint "\"position\" > 0", name: "workout_template_options_position_positive"
+    t.check_constraint "calculated_next_load_value IS NULL OR calculated_next_load_value >= 0::numeric", name: "workout_template_options_calculated_next_load_non_negative"
     t.check_constraint "next_load_value IS NULL OR next_load_value >= 0::numeric", name: "workout_template_options_next_load_non_negative"
     t.check_constraint "progression_increment IS NULL OR progression_increment >= 0::numeric", name: "workout_template_options_increment_non_negative"
     t.check_constraint "starting_load_value IS NULL OR starting_load_value >= 0::numeric", name: "workout_template_options_starting_load_non_negative"

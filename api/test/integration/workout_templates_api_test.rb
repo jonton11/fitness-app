@@ -61,6 +61,7 @@ class WorkoutTemplatesApiTest < ActionDispatch::IntegrationTest
     assert_equal true, default_option.fetch("is_default")
     assert_equal 60.0, default_option.fetch("starting_load_value")
     assert_equal 65.0, default_option.fetch("next_load_value")
+    assert_nil default_option.fetch("calculated_next_load_value")
     assert_equal 5.0, default_option.fetch("progression_increment")
 
     warmup = slot.fetch("set_prescriptions").first

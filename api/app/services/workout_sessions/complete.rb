@@ -16,6 +16,7 @@ module WorkoutSessions
         mark_pending_sets_not_performed!
         update_exercise_statuses!
         workout_session.save!
+        Progression::ApplyCompletedSession.call(workout_session:)
       end
 
       workout_session.reload
