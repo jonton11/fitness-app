@@ -213,6 +213,149 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertEqual(session.workoutTemplateID, templateID)
     }
 
+    func testWorkoutSessionAPIClientCreatesClientSnapshotWithRailsEnvelope() async throws {
+        let draft = try WorkoutSessionDraft(
+            template: offlineWorkoutTemplateFixture(),
+            startedAt: Date(timeIntervalSince1970: 0)
+        )
+        let requestBox = URLRequestBox()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolStub.self]
+        let apiClient = WorkoutSessionAPIClient(
+            baseURL: URL(string: "https://fitness.example")!,
+            session: URLSession(configuration: configuration)
+        )
+
+        URLProtocolStub.requestHandler = { request in
+            requestBox.request = request
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 201,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (
+                response,
+                try JSONEncoder().encode(["workout_session": draft.session])
+            )
+        }
+        defer {
+            URLProtocolStub.requestHandler = nil
+        }
+
+        let session = try await apiClient.createWorkoutSession(payload: draft.payload)
+
+        let request = try XCTUnwrap(requestBox.request)
+        let bodyData = try XCTUnwrap(request.httpBody ?? request.httpBodyStream?.readData())
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+        let payload = try XCTUnwrap(body["workout_session"] as? [String: Any])
+        let exercise = try XCTUnwrap((payload["exercises"] as? [[String: Any]])?.first)
+        let set = try XCTUnwrap((exercise["workout_session_sets"] as? [[String: Any]])?.first)
+
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.path, "/api/v1/workout_sessions")
+        XCTAssertEqual(payload["id"] as? String, draft.session.id.uuidString)
+        XCTAssertEqual(exercise["id"] as? String, draft.session.exercises[0].id.uuidString)
+        XCTAssertEqual(set["id"] as? String, draft.session.exercises[0].workoutSessionSets[0].id.uuidString)
+        XCTAssertEqual(set["planned_load_value"] as? Double, 70)
+        XCTAssertEqual(session, draft.session)
+    }
+
+    func testWorkoutSessionDraftClonesCachedRailsPlan() throws {
+        let template = offlineWorkoutTemplateFixture()
+        let identifiers = [UUID(), UUID(), UUID()]
+        var remainingIdentifiers = identifiers
+
+        let draft = try WorkoutSessionDraft(
+            template: template,
+            startedAt: Date(timeIntervalSince1970: 0),
+            makeID: { remainingIdentifiers.removeFirst() }
+        )
+
+        XCTAssertEqual(draft.session.id, identifiers[0])
+        XCTAssertEqual(draft.session.startedAt, "1970-01-01T00:00:00.000Z")
+        XCTAssertEqual(draft.session.workoutTemplateName, template.name)
+        XCTAssertEqual(draft.session.exercises[0].id, identifiers[1])
+        XCTAssertEqual(draft.session.exercises[0].plannedWorkingLoadValue, 70)
+        XCTAssertEqual(draft.session.exercises[0].workoutSessionSets[0].id, identifiers[2])
+        XCTAssertEqual(draft.session.exercises[0].workoutSessionSets[0].plannedLoadValue, 70)
+        XCTAssertEqual(draft.payload.id, draft.session.id)
+        XCTAssertEqual(draft.payload.exercises[0].workoutSessionSets[0].plannedLoadValue, 70)
+    }
+
+    func testSQLiteStoresActiveWorkoutAndConfiguration() throws {
+        let database = try FitnessLocalDatabase(isStoredInMemoryOnly: true)
+        let activeWorkoutStore = ActiveWorkoutStore(database: database, legacyFileURL: nil)
+        let configurationStore = WorkoutConfigurationStore(database: database)
+        let template = offlineWorkoutTemplateFixture()
+        let draft = try WorkoutSessionDraft(template: template)
+        let activeState = ActiveWorkoutState(
+            session: draft.session,
+            workoutTemplate: template,
+            pendingSessionCreation: PendingWorkoutSessionCreation(payload: draft.payload)
+        )
+        let configuration = WorkoutConfigurationSnapshot(templates: [template], exercises: [])
+
+        try activeWorkoutStore.save(activeState)
+        try configurationStore.save(configuration)
+
+        XCTAssertEqual(try activeWorkoutStore.load(), activeState)
+        XCTAssertEqual(try configurationStore.load(), configuration)
+
+        try activeWorkoutStore.clear()
+
+        XCTAssertNil(try activeWorkoutStore.load())
+        XCTAssertEqual(try configurationStore.load(), configuration)
+    }
+
+    @MainActor
+    func testWorkoutTemplatesLoadRefreshesCachedConfiguration() async throws {
+        let database = try FitnessLocalDatabase(isStoredInMemoryOnly: true)
+        let configurationStore = WorkoutConfigurationStore(database: database)
+        var cachedTemplate = offlineWorkoutTemplateFixture()
+        cachedTemplate.name = "Cached Lower"
+        var serverTemplate = cachedTemplate
+        serverTemplate.name = "Updated Lower"
+        try configurationStore.save(
+            WorkoutConfigurationSnapshot(templates: [cachedTemplate], exercises: [])
+        )
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolStub.self]
+        let urlSession = URLSession(configuration: configuration)
+        let baseURL = URL(string: "https://fitness.example")!
+        let viewModel = WorkoutTemplatesViewModel(
+            templateAPIClient: WorkoutTemplateAPIClient(baseURL: baseURL, session: urlSession),
+            exerciseAPIClient: ExerciseAPIClient(baseURL: baseURL, session: urlSession),
+            activeWorkoutStore: activeWorkoutStore(box: ActiveWorkoutStoreBox(state: nil)),
+            configurationStore: configurationStore
+        )
+
+        URLProtocolStub.requestHandler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            let data: Data
+            if request.url?.path == "/api/v1/workout_templates" {
+                data = try JSONEncoder().encode(["workout_templates": [serverTemplate]])
+            } else {
+                data = try JSONEncoder().encode(["exercises": [Exercise]()])
+            }
+            return (response, data)
+        }
+        defer {
+            URLProtocolStub.requestHandler = nil
+        }
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.templates.map(\.name), ["Updated Lower"])
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(try configurationStore.load()?.templates.map(\.name), ["Updated Lower"])
+    }
+
     func testWorkoutSessionAPIClientUpdatesSessionSetWithRailsEnvelope() async throws {
         let setID = UUID()
         let requestBox = URLRequestBox()
@@ -1376,6 +1519,142 @@ final class FitnessAppTests: XCTestCase {
     }
 
     @MainActor
+    func testWorkoutTemplatesStartWorkoutPersistsClientSnapshotBeforeNetworkSync() async throws {
+        let template = offlineWorkoutTemplateFixture()
+        let box = ActiveWorkoutStoreBox(state: nil)
+        let identifiers = [UUID(), UUID(), UUID()]
+        var remainingIdentifiers = identifiers
+        let viewModel = WorkoutTemplatesViewModel(
+            activeWorkoutStore: activeWorkoutStore(box: box),
+            now: { Date(timeIntervalSince1970: 0) },
+            makeID: { remainingIdentifiers.removeFirst() }
+        )
+
+        let startedSession = await viewModel.startWorkout(template: template)
+        let session = try XCTUnwrap(startedSession)
+
+        XCTAssertEqual(session.id, identifiers[0])
+        XCTAssertEqual(session.exercises[0].id, identifiers[1])
+        XCTAssertEqual(session.exercises[0].workoutSessionSets[0].id, identifiers[2])
+        XCTAssertEqual(session.startedAt, "1970-01-01T00:00:00.000Z")
+        XCTAssertEqual(viewModel.activeSession, session)
+        XCTAssertEqual(viewModel.activeWorkoutTemplate, template)
+        XCTAssertEqual(box.state?.session, session)
+        XCTAssertEqual(box.state?.workoutTemplate, template)
+        XCTAssertEqual(box.state?.pendingSessionCreation?.payload.id, session.id)
+    }
+
+    @MainActor
+    func testActiveWorkoutCreatesServerSnapshotBeforeReplayingSetUpdates() async throws {
+        let template = offlineWorkoutTemplateFixture()
+        let draft = try WorkoutSessionDraft(template: template)
+        let set = draft.session.exercises[0].workoutSessionSets[0]
+        let pendingSetUpdate = PendingWorkoutSessionSetUpdate(
+            setID: set.id,
+            payload: WorkoutSessionSetUpdatePayload(
+                actualReps: 8,
+                actualLoadValue: 70,
+                completionState: .completed,
+                completedAt: "2026-10-03T12:30:00.000Z",
+                lockVersion: set.lockVersion
+            )
+        )
+        var localSession = draft.session
+        localSession.exercises[0].workoutSessionSets[0].actualReps = pendingSetUpdate.payload.actualReps
+        localSession.exercises[0].workoutSessionSets[0].actualLoadValue = pendingSetUpdate.payload.actualLoadValue
+        localSession.exercises[0].workoutSessionSets[0].completionState = pendingSetUpdate.payload.completionState
+        localSession.exercises[0].workoutSessionSets[0].completedAt = pendingSetUpdate.payload.completedAt
+        let box = ActiveWorkoutStoreBox(
+            state: ActiveWorkoutState(
+                session: localSession,
+                workoutTemplate: template,
+                pendingSessionCreation: PendingWorkoutSessionCreation(payload: draft.payload),
+                pendingSetUpdates: [pendingSetUpdate]
+            )
+        )
+        var didCreateSession = false
+        let viewModel = ActiveWorkoutViewModel(
+            session: localSession,
+            workoutTemplate: template,
+            store: activeWorkoutStore(box: box),
+            createWorkoutSession: { payload in
+                XCTAssertEqual(payload, draft.payload)
+                didCreateSession = true
+                return draft.session
+            },
+            updateWorkoutSessionSet: { id, payload in
+                XCTAssertTrue(didCreateSession)
+                XCTAssertEqual(id, set.id)
+                XCTAssertEqual(payload, pendingSetUpdate.payload)
+                var syncedSet = set
+                syncedSet.actualReps = payload.actualReps
+                syncedSet.actualLoadValue = payload.actualLoadValue
+                syncedSet.completionState = payload.completionState
+                syncedSet.completedAt = payload.completedAt
+                syncedSet.lockVersion += 1
+                return syncedSet
+            }
+        )
+
+        XCTAssertEqual(viewModel.pendingSyncCount, 2)
+
+        await viewModel.retryPendingSync()
+
+        XCTAssertTrue(didCreateSession)
+        XCTAssertEqual(viewModel.pendingSyncCount, 0)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertNil(box.state?.pendingSessionCreation)
+        XCTAssertEqual(box.state?.pendingSetUpdates, [])
+        XCTAssertEqual(box.state?.session.exercises[0].workoutSessionSets[0].lockVersion, 1)
+    }
+
+    @MainActor
+    func testActiveWorkoutRetriesSessionCreationWithoutReplacingLocalProgress() async throws {
+        let template = offlineWorkoutTemplateFixture()
+        let draft = try WorkoutSessionDraft(template: template)
+        var localSession = draft.session
+        localSession.exercises[0].workoutSessionSets[0].actualReps = 8
+        localSession.exercises[0].workoutSessionSets[0].actualLoadValue = 70
+        localSession.exercises[0].workoutSessionSets[0].completionState = .completed
+        localSession.exercises[0].workoutSessionSets[0].completedAt = "2026-10-03T12:30:00.000Z"
+        let box = ActiveWorkoutStoreBox(
+            state: ActiveWorkoutState(
+                session: localSession,
+                workoutTemplate: template,
+                pendingSessionCreation: PendingWorkoutSessionCreation(payload: draft.payload)
+            )
+        )
+        var attemptCount = 0
+        let viewModel = ActiveWorkoutViewModel(
+            session: localSession,
+            workoutTemplate: template,
+            store: activeWorkoutStore(box: box),
+            createWorkoutSession: { _ in
+                attemptCount += 1
+                if attemptCount == 1 {
+                    throw URLError(.notConnectedToInternet)
+                }
+                return draft.session
+            }
+        )
+
+        await viewModel.retryPendingSessionCreation()
+
+        XCTAssertEqual(viewModel.pendingSyncCount, 1)
+        XCTAssertEqual(viewModel.errorMessage, "Workout saved locally. Start sync pending.")
+        XCTAssertNotNil(box.state?.pendingSessionCreation)
+
+        await viewModel.retryPendingSessionCreation()
+
+        XCTAssertEqual(attemptCount, 2)
+        XCTAssertEqual(viewModel.pendingSyncCount, 0)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(viewModel.session, localSession)
+        XCTAssertEqual(box.state?.session, localSession)
+        XCTAssertNil(box.state?.pendingSessionCreation)
+    }
+
+    @MainActor
     func testWorkoutTemplatesStartWorkoutDoesNotOverwriteExistingActiveWorkoutState() async throws {
         let existingSession = workoutSessionFixture()
         let existingSet = existingSession.exercises[0].workoutSessionSets[0]
@@ -1401,24 +1680,9 @@ final class FitnessAppTests: XCTestCase {
             ]
         )
         let box = ActiveWorkoutStoreBox(state: existingState)
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [URLProtocolStub.self]
-        let sessionAPIClient = WorkoutSessionAPIClient(
-            baseURL: URL(string: "https://fitness.example")!,
-            session: URLSession(configuration: configuration)
-        )
         let viewModel = WorkoutTemplatesViewModel(
-            sessionAPIClient: sessionAPIClient,
             activeWorkoutStore: activeWorkoutStore(box: box)
         )
-
-        URLProtocolStub.requestHandler = { _ in
-            XCTFail("Starting a new workout should not call the API while active local state exists.")
-            throw URLError(.badServerResponse)
-        }
-        defer {
-            URLProtocolStub.requestHandler = nil
-        }
 
         let startedSession = await viewModel.startWorkout(template: workoutTemplateFixture())
 
@@ -1547,6 +1811,76 @@ final class FitnessAppTests: XCTestCase {
                     lockVersion: 0,
                     exerciseOptions: exerciseOptions,
                     setPrescriptions: []
+                )
+            ]
+        )
+    }
+
+    private func offlineWorkoutTemplateFixture() -> WorkoutTemplate {
+        let templateID = UUID()
+        let slotID = UUID()
+        let exerciseID = UUID()
+        let prescriptionID = UUID()
+        let exercise = TemplateExerciseSummary(
+            id: exerciseID,
+            name: "Back Squat",
+            primaryMuscleGroup: "Legs",
+            loadType: .lb,
+            archivedAt: nil
+        )
+        let option = WorkoutTemplateExerciseOption(
+            id: UUID(),
+            position: 1,
+            exerciseID: exerciseID,
+            exercise: exercise,
+            isDefault: true,
+            startingLoadValue: 65,
+            nextLoadValue: nil,
+            calculatedNextLoadValue: 70,
+            progressionIncrement: 5,
+            plannedWorkingLoadValue: 70,
+            plannedSessionSets: [
+                WorkoutTemplateSessionSetPlan(
+                    workoutTemplateSetPrescriptionID: prescriptionID,
+                    plannedLoadValue: 70
+                )
+            ],
+            createdAt: "2026-10-03T12:00:00.000Z",
+            updatedAt: "2026-10-03T12:00:00.000Z"
+        )
+        let prescription = WorkoutTemplateSetPrescription(
+            id: prescriptionID,
+            position: 1,
+            setType: .working,
+            repMin: 5,
+            repMax: 8,
+            loadStrategy: .workingLoad,
+            loadValue: nil,
+            createdAt: "2026-10-03T12:00:00.000Z",
+            updatedAt: "2026-10-03T12:00:00.000Z"
+        )
+
+        return WorkoutTemplate(
+            id: templateID,
+            name: "Lower",
+            notes: nil,
+            archivedAt: nil,
+            createdAt: "2026-10-03T12:00:00.000Z",
+            updatedAt: "2026-10-03T12:00:00.000Z",
+            lockVersion: 0,
+            slots: [
+                WorkoutTemplateSlot(
+                    id: slotID,
+                    position: 1,
+                    label: "Squat",
+                    defaultExerciseID: exerciseID,
+                    defaultExercise: exercise,
+                    restSeconds: 180,
+                    createdAt: "2026-10-03T12:00:00.000Z",
+                    updatedAt: "2026-10-03T12:00:00.000Z",
+                    lockVersion: 0,
+                    exerciseOptions: [option],
+                    setPrescriptions: [prescription]
                 )
             ]
         )

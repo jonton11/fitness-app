@@ -93,7 +93,7 @@ struct WorkoutTemplatesView: View {
                 NavigationStack {
                     ActiveWorkoutView(
                         session: session,
-                        workoutTemplate: viewModel.templates.first { $0.id == session.workoutTemplateID }
+                        workoutTemplate: viewModel.activeWorkoutTemplate
                     )
                 }
                     .onDisappear {

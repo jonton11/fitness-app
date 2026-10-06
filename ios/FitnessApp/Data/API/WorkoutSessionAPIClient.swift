@@ -24,6 +24,16 @@ struct WorkoutSessionAPIClient {
         return envelope.workoutSession
     }
 
+    func createWorkoutSession(payload: WorkoutSessionCreatePayload) async throws -> WorkoutSession {
+        let envelope: WorkoutSessionEnvelope = try await request(
+            path: "/api/v1/workout_sessions",
+            method: "POST",
+            body: WorkoutSessionRequestEnvelope(workoutSession: payload)
+        )
+
+        return envelope.workoutSession
+    }
+
     func getWorkoutSession(id: UUID) async throws -> WorkoutSession {
         let envelope: WorkoutSessionEnvelope = try await request(
             path: "/api/v1/workout_sessions/\(id.uuidString)",
@@ -106,6 +116,76 @@ struct WorkoutSessionStartPayload: Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case workoutTemplateID = "workout_template_id"
         case startedAt = "started_at"
+    }
+}
+
+struct WorkoutSessionCreatePayload: Codable, Equatable {
+    var id: UUID
+    var workoutTemplateID: UUID
+    var workoutTemplateName: String
+    var startedAt: String
+    var exercises: [WorkoutSessionExerciseCreatePayload]
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case workoutTemplateID = "workout_template_id"
+        case workoutTemplateName = "workout_template_name"
+        case startedAt = "started_at"
+        case exercises
+    }
+}
+
+struct WorkoutSessionExerciseCreatePayload: Codable, Equatable {
+    var id: UUID
+    var workoutTemplateSlotID: UUID?
+    var workoutTemplateExerciseOptionID: UUID?
+    var selectedExerciseID: UUID
+    var position: Int
+    var label: String
+    var selectedExerciseName: String
+    var selectedExerciseLoadType: LoadType
+    var restSeconds: Int
+    var plannedWorkingLoadValue: Double?
+    var progressionIncrement: Double?
+    var workoutSessionSets: [WorkoutSessionSetCreatePayload]
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case workoutTemplateSlotID = "workout_template_slot_id"
+        case workoutTemplateExerciseOptionID = "workout_template_exercise_option_id"
+        case selectedExerciseID = "selected_exercise_id"
+        case position
+        case label
+        case selectedExerciseName = "selected_exercise_name"
+        case selectedExerciseLoadType = "selected_exercise_load_type"
+        case restSeconds = "rest_seconds"
+        case plannedWorkingLoadValue = "planned_working_load_value"
+        case progressionIncrement = "progression_increment"
+        case workoutSessionSets = "workout_session_sets"
+    }
+}
+
+struct WorkoutSessionSetCreatePayload: Codable, Equatable {
+    var id: UUID
+    var workoutTemplateSetPrescriptionID: UUID?
+    var position: Int
+    var setType: SetType
+    var targetRepMin: Int
+    var targetRepMax: Int
+    var loadStrategy: LoadStrategy
+    var prescribedLoadValue: Double?
+    var plannedLoadValue: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case workoutTemplateSetPrescriptionID = "workout_template_set_prescription_id"
+        case position
+        case setType = "set_type"
+        case targetRepMin = "target_rep_min"
+        case targetRepMax = "target_rep_max"
+        case loadStrategy = "load_strategy"
+        case prescribedLoadValue = "prescribed_load_value"
+        case plannedLoadValue = "planned_load_value"
     }
 }
 

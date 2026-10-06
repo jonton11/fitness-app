@@ -76,6 +76,8 @@ struct WorkoutTemplateExerciseOption: Codable, Equatable, Identifiable {
     var nextLoadValue: Double?
     var calculatedNextLoadValue: Double?
     var progressionIncrement: Double?
+    var plannedWorkingLoadValue: Double? = nil
+    var plannedSessionSets: [WorkoutTemplateSessionSetPlan]? = nil
     var createdAt: String
     var updatedAt: String
 
@@ -89,8 +91,20 @@ struct WorkoutTemplateExerciseOption: Codable, Equatable, Identifiable {
         case nextLoadValue = "next_load_value"
         case calculatedNextLoadValue = "calculated_next_load_value"
         case progressionIncrement = "progression_increment"
+        case plannedWorkingLoadValue = "planned_working_load_value"
+        case plannedSessionSets = "planned_session_sets"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+}
+
+struct WorkoutTemplateSessionSetPlan: Codable, Equatable {
+    var workoutTemplateSetPrescriptionID: UUID
+    var plannedLoadValue: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case workoutTemplateSetPrescriptionID = "workout_template_set_prescription_id"
+        case plannedLoadValue = "planned_load_value"
     }
 }
 

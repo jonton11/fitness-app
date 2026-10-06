@@ -161,3 +161,12 @@ enum WorkoutSessionSetCompletionState: String, Codable {
         self == .completed || self == .attemptedButTargetNotMet
     }
 }
+
+extension Date {
+    var apiTimestamp: String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter.string(from: self)
+    }
+}

@@ -13,12 +13,18 @@ final class ActiveWorkoutViewModel: ObservableObject {
     @Published private(set) var syncIssueCount = 0
 
     private let store: ActiveWorkoutStore
+    private let createWorkoutSession: (WorkoutSessionCreatePayload) async throws -> WorkoutSession
     private let getWorkoutSession: (UUID) async throws -> WorkoutSession
     private let updateWorkoutSession: (UUID, WorkoutSessionStatusPayload) async throws -> WorkoutSession
     private let updateWorkoutSessionExercise: (UUID, WorkoutSessionExerciseUpdatePayload) async throws -> WorkoutSessionExercise
     private let updateWorkoutSessionSet: (UUID, WorkoutSessionSetUpdatePayload) async throws -> WorkoutSessionSet
     private let createExerciseOption: (WorkoutTemplateExerciseOptionCreatePayload) async throws -> WorkoutTemplateExerciseOption
     private let now: () -> Date
+    private var pendingSessionCreation: PendingWorkoutSessionCreation? {
+        didSet {
+            refreshPendingSyncCount()
+        }
+    }
     private var pendingSetUpdates: [PendingWorkoutSessionSetUpdate] = [] {
         didSet {
             refreshPendingSyncCount()
@@ -40,6 +46,9 @@ final class ActiveWorkoutViewModel: ObservableObject {
         workoutTemplate: WorkoutTemplate? = nil,
         store: ActiveWorkoutStore = .live,
         now: @escaping () -> Date = Date.init,
+        createWorkoutSession: @escaping (WorkoutSessionCreatePayload) async throws -> WorkoutSession = { payload in
+            try await WorkoutSessionAPIClient.live.createWorkoutSession(payload: payload)
+        },
         getWorkoutSession: @escaping (UUID) async throws -> WorkoutSession = { id in
             try await WorkoutSessionAPIClient.live.getWorkoutSession(id: id)
         },
@@ -59,6 +68,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
         self.session = session
         self.workoutTemplate = workoutTemplate
         self.store = store
+        self.createWorkoutSession = createWorkoutSession
         self.getWorkoutSession = getWorkoutSession
         self.updateWorkoutSession = updateWorkoutSession
         self.updateWorkoutSessionExercise = updateWorkoutSessionExercise
@@ -68,6 +78,8 @@ final class ActiveWorkoutViewModel: ObservableObject {
 
         if let state = try? store.load(), state.session.id == session.id {
             self.session = state.session
+            self.workoutTemplate = state.workoutTemplate ?? workoutTemplate
+            pendingSessionCreation = state.pendingSessionCreation
             pendingSetUpdates = state.pendingSetUpdates
             pendingSessionUpdate = state.pendingSessionUpdate
             refreshPendingSyncCount()
@@ -115,6 +127,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
 
     var canModifySelectedExercise: Bool {
         guard session.status == .active,
+              pendingSessionCreation == nil,
               let selectedExercise,
               selectedExercise.workoutTemplateSlotID != nil else {
             return false
@@ -185,6 +198,8 @@ final class ActiveWorkoutViewModel: ObservableObject {
             try store.save(
                 ActiveWorkoutState(
                     session: updatedSession,
+                    workoutTemplate: workoutTemplate,
+                    pendingSessionCreation: pendingSessionCreation,
                     pendingSetUpdates: updatedPendingSetUpdates,
                     pendingSessionUpdate: pendingSessionUpdate,
                     syncIssues: updatedSyncIssues
@@ -224,6 +239,8 @@ final class ActiveWorkoutViewModel: ObservableObject {
             try store.save(
                 ActiveWorkoutState(
                     session: updatedSession,
+                    workoutTemplate: workoutTemplate,
+                    pendingSessionCreation: pendingSessionCreation,
                     pendingSetUpdates: pendingSetUpdates,
                     pendingSessionUpdate: pendingUpdate,
                     syncIssues: syncIssues
@@ -288,6 +305,8 @@ final class ActiveWorkoutViewModel: ObservableObject {
             try store.save(
                 ActiveWorkoutState(
                     session: updatedSession,
+                    workoutTemplate: workoutTemplate,
+                    pendingSessionCreation: pendingSessionCreation,
                     pendingSetUpdates: updatedPendingSetUpdates,
                     pendingSessionUpdate: pendingSessionUpdate,
                     syncIssues: updatedSyncIssues
@@ -329,6 +348,8 @@ final class ActiveWorkoutViewModel: ObservableObject {
             try store.save(
                 ActiveWorkoutState(
                     session: updatedSession,
+                    workoutTemplate: workoutTemplate,
+                    pendingSessionCreation: pendingSessionCreation,
                     pendingSetUpdates: pendingSetUpdates,
                     pendingSessionUpdate: pendingUpdate,
                     syncIssues: syncIssues
@@ -368,6 +389,8 @@ final class ActiveWorkoutViewModel: ObservableObject {
             try store.save(
                 ActiveWorkoutState(
                     session: updatedSession,
+                    workoutTemplate: workoutTemplate,
+                    pendingSessionCreation: pendingSessionCreation,
                     pendingSetUpdates: pendingSetUpdates,
                     pendingSessionUpdate: pendingSessionUpdate,
                     syncIssues: syncIssues
@@ -415,6 +438,12 @@ final class ActiveWorkoutViewModel: ObservableObject {
     }
 
     func retryPendingSync() async {
+        await retryPendingSessionCreation()
+
+        guard pendingSessionCreation == nil else {
+            return
+        }
+
         await retryPendingSetUpdates()
 
         guard pendingSetUpdates.isEmpty else {
@@ -427,6 +456,33 @@ final class ActiveWorkoutViewModel: ObservableObject {
         }
 
         await retryPendingSessionUpdate()
+    }
+
+    func retryPendingSessionCreation() async {
+        guard let pendingSessionCreation else {
+            return
+        }
+
+        do {
+            _ = try await createWorkoutSession(pendingSessionCreation.payload)
+            try store.save(
+                ActiveWorkoutState(
+                    session: session,
+                    workoutTemplate: workoutTemplate,
+                    pendingSetUpdates: pendingSetUpdates,
+                    pendingSessionUpdate: pendingSessionUpdate,
+                    syncIssues: syncIssues
+                )
+            )
+            self.pendingSessionCreation = nil
+            errorMessage = nil
+        } catch {
+            if error.isNonRetryableSyncFailure {
+                errorMessage = "Workout start sync needs attention."
+            } else {
+                errorMessage = "Workout saved locally. Start sync pending."
+            }
+        }
     }
 
     func retryPendingSetUpdates() async {
@@ -452,6 +508,8 @@ final class ActiveWorkoutViewModel: ObservableObject {
                 try store.save(
                     ActiveWorkoutState(
                         session: updatedSession,
+                        workoutTemplate: workoutTemplate,
+                        pendingSessionCreation: pendingSessionCreation,
                         pendingSetUpdates: nextRemainingUpdates,
                         pendingSessionUpdate: pendingSessionUpdate,
                         syncIssues: nextSyncIssues
@@ -477,6 +535,8 @@ final class ActiveWorkoutViewModel: ObservableObject {
                         try store.save(
                             ActiveWorkoutState(
                                 session: session,
+                                workoutTemplate: workoutTemplate,
+                                pendingSessionCreation: pendingSessionCreation,
                                 pendingSetUpdates: nextRemainingUpdates,
                                 pendingSessionUpdate: pendingSessionUpdate,
                                 syncIssues: nextSyncIssues
@@ -515,6 +575,8 @@ final class ActiveWorkoutViewModel: ObservableObject {
             try store.save(
                 ActiveWorkoutState(
                     session: syncedSession,
+                    workoutTemplate: workoutTemplate,
+                    pendingSessionCreation: pendingSessionCreation,
                     pendingSetUpdates: pendingSetUpdates,
                     syncIssues: syncIssues
                 )
@@ -575,7 +637,9 @@ final class ActiveWorkoutViewModel: ObservableObject {
     }
 
     private func refreshPendingSyncCount() {
-        pendingSyncCount = pendingSetUpdates.count + (pendingSessionUpdate == nil ? 0 : 1)
+        pendingSyncCount = pendingSetUpdates.count +
+            (pendingSessionCreation == nil ? 0 : 1) +
+            (pendingSessionUpdate == nil ? 0 : 1)
     }
 
     private func syncPendingSetUpdate(_ pendingUpdate: PendingWorkoutSessionSetUpdate) async throws -> WorkoutSessionSet {
@@ -867,15 +931,6 @@ private extension Array where Element == WorkoutSessionSetSyncIssue {
 
     func removing(setID: UUID) -> [WorkoutSessionSetSyncIssue] {
         filter { $0.setID != setID }
-    }
-}
-
-private extension Date {
-    var apiTimestamp: String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        return formatter.string(from: self)
     }
 }
 
