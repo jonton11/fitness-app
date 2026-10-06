@@ -61,6 +61,102 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertEqual(payload.slots[0].setPrescriptions[0].loadValue, 65)
     }
 
+    func testWorkoutTemplateFormPayloadPreservesSubstitutesAndAdditionalPrescriptions() throws {
+        let defaultExerciseID = UUID()
+        let substituteExerciseID = UUID()
+        let defaultOptionID = UUID()
+        let substituteOptionID = UUID()
+        let firstPrescriptionID = UUID()
+        let secondPrescriptionID = UUID()
+        let slot = WorkoutTemplateSlot(
+            id: UUID(),
+            position: 1,
+            label: "Upper Chest Press",
+            defaultExerciseID: defaultExerciseID,
+            defaultExercise: templateExerciseSummary(id: defaultExerciseID, name: "Incline Dumbbell Press"),
+            restSeconds: 180,
+            createdAt: "2026-10-03T12:00:00.000Z",
+            updatedAt: "2026-10-03T12:00:00.000Z",
+            lockVersion: 2,
+            exerciseOptions: [
+                WorkoutTemplateExerciseOption(
+                    id: defaultOptionID,
+                    position: 1,
+                    exerciseID: defaultExerciseID,
+                    exercise: templateExerciseSummary(id: defaultExerciseID, name: "Incline Dumbbell Press"),
+                    isDefault: true,
+                    startingLoadValue: 60,
+                    nextLoadValue: 65,
+                    calculatedNextLoadValue: 70,
+                    progressionIncrement: 5,
+                    createdAt: "2026-10-03T12:00:00.000Z",
+                    updatedAt: "2026-10-03T12:00:00.000Z"
+                ),
+                WorkoutTemplateExerciseOption(
+                    id: substituteOptionID,
+                    position: 2,
+                    exerciseID: substituteExerciseID,
+                    exercise: templateExerciseSummary(id: substituteExerciseID, name: "Incline Machine Press"),
+                    isDefault: false,
+                    startingLoadValue: 80,
+                    nextLoadValue: 85,
+                    calculatedNextLoadValue: 90,
+                    progressionIncrement: 10,
+                    createdAt: "2026-10-03T12:00:00.000Z",
+                    updatedAt: "2026-10-03T12:00:00.000Z"
+                )
+            ],
+            setPrescriptions: [
+                WorkoutTemplateSetPrescription(
+                    id: firstPrescriptionID,
+                    position: 1,
+                    setType: .working,
+                    repMin: 5,
+                    repMax: 8,
+                    loadStrategy: .workingLoad,
+                    loadValue: nil,
+                    createdAt: "2026-10-03T12:00:00.000Z",
+                    updatedAt: "2026-10-03T12:00:00.000Z"
+                ),
+                WorkoutTemplateSetPrescription(
+                    id: secondPrescriptionID,
+                    position: 2,
+                    setType: .warmup,
+                    repMin: 10,
+                    repMax: 12,
+                    loadStrategy: .percentageOfWorkingLoad,
+                    loadValue: 50,
+                    createdAt: "2026-10-03T12:00:00.000Z",
+                    updatedAt: "2026-10-03T12:00:00.000Z"
+                )
+            ]
+        )
+        let template = WorkoutTemplate(
+            id: UUID(),
+            name: "Upper",
+            notes: nil,
+            archivedAt: nil,
+            createdAt: "2026-10-03T12:00:00.000Z",
+            updatedAt: "2026-10-03T12:00:00.000Z",
+            lockVersion: 4,
+            slots: [slot]
+        )
+        var form = WorkoutTemplateFormState(template: template)
+        form.slots[0].repMin = "6"
+
+        let payload = try XCTUnwrap(form.payload(lockVersion: template.lockVersion).slots.first)
+
+        XCTAssertEqual(payload.exerciseOptions.map(\.id), [defaultOptionID, substituteOptionID])
+        XCTAssertEqual(payload.exerciseOptions[1].exerciseID, substituteExerciseID)
+        XCTAssertEqual(payload.exerciseOptions[1].startingLoadValue, 80)
+        XCTAssertEqual(payload.exerciseOptions[1].nextLoadValue, 85)
+        XCTAssertEqual(payload.exerciseOptions[1].progressionIncrement, 10)
+        XCTAssertEqual(payload.setPrescriptions.map(\.id), [firstPrescriptionID, secondPrescriptionID])
+        XCTAssertEqual(payload.setPrescriptions[0].repMin, 6)
+        XCTAssertEqual(payload.setPrescriptions[1].repMin, 10)
+        XCTAssertEqual(payload.setPrescriptions[1].loadValue, 50)
+    }
+
     func testWorkoutSessionAPIClientStartsSessionWithRailsEnvelope() async throws {
         let templateID = UUID()
         let requestBox = URLRequestBox()
@@ -1016,6 +1112,16 @@ final class FitnessAppTests: XCTestCase {
             lockVersion: 0,
             createdAt: "2026-10-03T12:00:00.000Z",
             updatedAt: "2026-10-03T12:00:00.000Z"
+        )
+    }
+
+    private func templateExerciseSummary(id: UUID, name: String) -> TemplateExerciseSummary {
+        TemplateExerciseSummary(
+            id: id,
+            name: name,
+            primaryMuscleGroup: "Chest",
+            loadType: .lb,
+            archivedAt: nil
         )
     }
 
