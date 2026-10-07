@@ -11,8 +11,9 @@ class WorkoutTemplateExerciseOption < ApplicationRecord
   validates :progression_increment, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
   validate :default_option_matches_slot_default
 
-  def planned_working_load_value
-    return starting_load_value unless completed_history?
+  def planned_working_load_value(completed_history: nil)
+    completed_history = completed_history? if completed_history.nil?
+    return starting_load_value unless completed_history
 
     next_load_value || calculated_next_load_value || starting_load_value
   end

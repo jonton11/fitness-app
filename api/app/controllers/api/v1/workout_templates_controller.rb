@@ -10,7 +10,7 @@ module Api
                     .includes(slots: [
                       :default_exercise,
                       :set_prescriptions,
-                      { exercise_options: [ :exercise, { workout_session_exercises: :workout_session } ] }
+                      { exercise_options: :exercise }
                     ])
                     .order(:name)
         templates = apply_status_filter(templates)
@@ -22,12 +22,18 @@ module Api
           :workout_templates,
           templates,
           serializer: Api::V1::WorkoutTemplateSerializer,
+          serializer_options: workout_template_serializer_options(templates),
           meta: { limit:, offset:, total: }
         )
       end
 
       def show
-        render_resource(:workout_template, workout_template, serializer: Api::V1::WorkoutTemplateSerializer)
+        render_resource(
+          :workout_template,
+          workout_template,
+          serializer: Api::V1::WorkoutTemplateSerializer,
+          serializer_options: workout_template_serializer_options([ workout_template ])
+        )
       end
 
       def create
@@ -55,9 +61,29 @@ module Api
                               .includes(slots: [
                                 :default_exercise,
                                 :set_prescriptions,
-                                { exercise_options: [ :exercise, { workout_session_exercises: :workout_session } ] }
+                                { exercise_options: :exercise }
                               ])
                               .find(params[:id])
+      end
+
+      def workout_template_serializer_options(templates)
+        option_ids = templates.flat_map do |template|
+          template.slots.flat_map { |slot| slot.exercise_options.map(&:id) }
+        end
+        completed_option_ids = if option_ids.empty?
+          []
+        else
+          WorkoutSessionExercise
+            .joins(:workout_session)
+            .where(
+              workout_template_exercise_option_id: option_ids,
+              workout_sessions: { status: "completed" }
+            )
+            .distinct
+            .pluck(:workout_template_exercise_option_id)
+        end
+
+        { completed_history_by_option_id: completed_option_ids.index_with(true) }
       end
 
       def template_payload

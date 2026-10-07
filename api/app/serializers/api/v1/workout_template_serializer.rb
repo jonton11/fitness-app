@@ -1,6 +1,11 @@
 module Api
   module V1
     class WorkoutTemplateSerializer < ApplicationSerializer
+      def initialize(record, completed_history_by_option_id: nil)
+        super(record)
+        @completed_history_by_option_id = completed_history_by_option_id
+      end
+
       def as_json
         {
           id: record.id,
@@ -16,6 +21,8 @@ module Api
 
       private
 
+      attr_reader :completed_history_by_option_id
+
       def serialize_slot(slot)
         {
           id: slot.id,
@@ -28,10 +35,19 @@ module Api
           updated_at: serialize_time(slot.updated_at),
           lock_version: slot.lock_version,
           exercise_options: slot.exercise_options.sort_by(&:position).map do |option|
-            WorkoutTemplateExerciseOptionSerializer.new(option).as_json
+            WorkoutTemplateExerciseOptionSerializer.new(
+              option,
+              completed_history: completed_history_for(option)
+            ).as_json
           end,
           set_prescriptions: slot.set_prescriptions.sort_by(&:position).map { |prescription| serialize_set_prescription(prescription) }
         }
+      end
+
+      def completed_history_for(option)
+        return if completed_history_by_option_id.nil?
+
+        completed_history_by_option_id.key?(option.id)
       end
 
       def serialize_set_prescription(prescription)

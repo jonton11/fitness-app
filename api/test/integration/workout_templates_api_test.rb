@@ -13,6 +13,51 @@ class WorkoutTemplatesApiTest < ActionDispatch::IntegrationTest
     assert_equal({ "limit" => 50, "offset" => 0, "total" => 1 }, body.fetch("meta"))
   end
 
+  test "lists planned loads without materializing workout history" do
+    template = create_template(name: "Upper Body")
+    slot = template.slots.first
+    option = slot.exercise_options.first
+    session = WorkoutSession.create!(
+      workout_template: template,
+      workout_template_name: template.name,
+      status: "completed",
+      started_at: 1.day.ago,
+      completed_at: Time.current
+    )
+    session.exercises.create!(
+      workout_template_slot: slot,
+      workout_template_exercise_option: option,
+      selected_exercise: option.exercise,
+      position: 1,
+      label: slot.label,
+      selected_exercise_name: option.exercise.name,
+      selected_exercise_load_type: option.exercise.load_type,
+      rest_seconds: slot.rest_seconds,
+      status: "completed"
+    )
+
+    assert_no_queries_match(/SELECT "workout_session_exercises"\.\*/) do
+      assert_queries_match(
+        /SELECT DISTINCT .*workout_template_exercise_option_id.*FROM "workout_session_exercises"/,
+        count: 1
+      ) do
+        get "/api/v1/workout_templates"
+      end
+    end
+
+    assert_response :success
+    planned_load = response.parsed_body.dig(
+      "workout_templates",
+      0,
+      "slots",
+      0,
+      "exercise_options",
+      0,
+      "planned_working_load_value"
+    )
+    assert_equal 65.0, planned_load
+  end
+
   test "lists archived workout templates" do
     create_template(name: "Upper Body")
     create_template(name: "Archived Legs", archived_at: Time.current)

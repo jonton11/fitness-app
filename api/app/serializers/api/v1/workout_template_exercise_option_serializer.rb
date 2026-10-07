@@ -1,8 +1,13 @@
 module Api
   module V1
     class WorkoutTemplateExerciseOptionSerializer < ApplicationSerializer
+      def initialize(record, completed_history: nil)
+        super(record)
+        @completed_history = completed_history
+      end
+
       def as_json
-        planned_working_load_value = record.planned_working_load_value
+        planned_working_load_value = record.planned_working_load_value(completed_history:)
 
         {
           id: record.id,
@@ -22,6 +27,8 @@ module Api
       end
 
       private
+
+      attr_reader :completed_history
 
       def serialize_exercise
         {
