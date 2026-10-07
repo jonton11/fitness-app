@@ -6,9 +6,10 @@ module WorkoutTemplateExerciseOptions
       new(...).call
     end
 
-    def initialize(workout_template_slot:, attributes:, exercise: nil, exercise_attributes: nil)
+    def initialize(workout_template_slot:, attributes:, exercise: nil, exercise_id: nil, exercise_attributes: nil)
       @workout_template_slot = workout_template_slot
       @exercise = exercise
+      @exercise_id = exercise_id
       @exercise_attributes = exercise_attributes
       @attributes = attributes
     end
@@ -33,10 +34,12 @@ module WorkoutTemplateExerciseOptions
 
     private
 
-    attr_reader :workout_template_slot, :exercise, :exercise_attributes, :attributes
+    attr_reader :workout_template_slot, :exercise, :exercise_id, :exercise_attributes, :attributes
 
     def find_or_create_exercise!
-      exercise || Exercise.create!(exercise_attributes)
+      exercise || Exercise.find_or_create_by!(id: exercise_id) do |new_exercise|
+        new_exercise.assign_attributes(exercise_attributes)
+      end
     end
 
     def option_attributes(exercise_option)

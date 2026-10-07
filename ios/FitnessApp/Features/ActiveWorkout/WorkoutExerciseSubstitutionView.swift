@@ -87,8 +87,9 @@ struct WorkoutExerciseSubstitutionView: View {
                 NewWorkoutSubstituteView(
                     startingLoadValue: nil,
                     progressionIncrement: nil
-                ) { form, startingLoadValue, progressionIncrement in
+                ) { exerciseID, form, startingLoadValue, progressionIncrement in
                     await viewModel.addAndSelectSubstitute(
+                        exerciseID: exerciseID,
                         form: form,
                         startingLoadValue: startingLoadValue,
                         progressionIncrement: progressionIncrement
@@ -122,9 +123,10 @@ struct WorkoutExerciseSubstitutionView: View {
 }
 
 struct NewWorkoutSubstituteView: View {
-    let onSave: (ExerciseFormState, Double?, Double?) async -> Bool
+    let onSave: (UUID, ExerciseFormState, Double?, Double?) async -> Bool
 
     @Environment(\.dismiss) private var dismiss
+    @State private var exerciseID = UUID()
     @State private var form = ExerciseFormState()
     @State private var startingLoadValue: String
     @State private var progressionIncrement: String
@@ -134,7 +136,7 @@ struct NewWorkoutSubstituteView: View {
     init(
         startingLoadValue: Double?,
         progressionIncrement: Double?,
-        onSave: @escaping (ExerciseFormState, Double?, Double?) async -> Bool
+        onSave: @escaping (UUID, ExerciseFormState, Double?, Double?) async -> Bool
     ) {
         self.onSave = onSave
         _startingLoadValue = State(initialValue: startingLoadValue?.formValue ?? "")
@@ -194,7 +196,7 @@ struct NewWorkoutSubstituteView: View {
         isSaving = true
         errorMessage = nil
         Task {
-            if await onSave(form, parsedStartingLoadValue, parsedProgressionIncrement) {
+            if await onSave(exerciseID, form, parsedStartingLoadValue, parsedProgressionIncrement) {
                 dismiss()
             } else {
                 errorMessage = "Could not add exercise."

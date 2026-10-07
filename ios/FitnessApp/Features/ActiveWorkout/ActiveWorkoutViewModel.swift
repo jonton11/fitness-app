@@ -383,6 +383,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
     }
 
     func addAndSelectSubstitute(
+        exerciseID: UUID,
         form: ExerciseFormState,
         startingLoadValue: Double?,
         progressionIncrement: Double?
@@ -399,7 +400,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
             let option = try await createExerciseOption(
                 WorkoutTemplateExerciseOptionCreatePayload(
                     workoutTemplateSlotID: workoutTemplateSlotID,
-                    exerciseID: nil,
+                    exerciseID: exerciseID,
                     exercise: form.payload(lockVersion: nil),
                     startingLoadValue: startingLoadValue,
                     progressionIncrement: progressionIncrement

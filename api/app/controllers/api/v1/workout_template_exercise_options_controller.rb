@@ -8,6 +8,7 @@ module Api
         result = WorkoutTemplateExerciseOptions::Create.call(
           workout_template_slot:,
           exercise: existing_exercise,
+          exercise_id: new_exercise_id,
           exercise_attributes: new_exercise_attributes,
           attributes: workout_template_exercise_option_params
         )
@@ -38,6 +39,12 @@ module Api
 
       def new_exercise_attributes
         workout_template_exercise_option_params[:exercise]
+      end
+
+      def new_exercise_id
+        return if new_exercise_attributes.blank?
+
+        workout_template_exercise_option_params.require(:exercise_id)
       end
 
       def workout_template_exercise_option_params

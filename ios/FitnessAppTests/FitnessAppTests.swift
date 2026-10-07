@@ -355,7 +355,7 @@ final class FitnessAppTests: XCTestCase {
         )
         let payload = WorkoutTemplateExerciseOptionCreatePayload(
             workoutTemplateSlotID: slotID,
-            exerciseID: nil,
+            exerciseID: exerciseID,
             exercise: exercisePayload,
             startingLoadValue: 80,
             progressionIncrement: 10
@@ -390,6 +390,7 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertEqual(request.httpMethod, "POST")
         XCTAssertEqual(request.url?.path, "/api/v1/workout_template_exercise_options")
         XCTAssertEqual(bodyPayload["workout_template_slot_id"] as? String, slotID.uuidString)
+        XCTAssertEqual(bodyPayload["exercise_id"] as? String, exerciseID.uuidString)
         XCTAssertEqual(nestedExercise["name"] as? String, "Incline Machine Press")
         XCTAssertEqual(nestedExercise["load_type"] as? String, "machine_stack")
         XCTAssertEqual(bodyPayload["starting_load_value"] as? Double, 80)
@@ -1071,8 +1072,9 @@ final class FitnessAppTests: XCTestCase {
     func testActiveWorkoutCreatesAndSelectsNewSubstitute() async {
         let templateID = UUID()
         let slotID = UUID()
+        let exerciseID = UUID()
         let createdOption = workoutTemplateExerciseOptionFixture(
-            exerciseID: UUID(),
+            exerciseID: exerciseID,
             name: "Incline Machine Press"
         )
         var session = workoutSessionFixture(templateID: templateID)
@@ -1102,6 +1104,7 @@ final class FitnessAppTests: XCTestCase {
             },
             createExerciseOption: { payload in
                 XCTAssertEqual(payload.workoutTemplateSlotID, slotID)
+                XCTAssertEqual(payload.exerciseID, exerciseID)
                 XCTAssertEqual(payload.exercise?.name, "Incline Machine Press")
                 XCTAssertEqual(payload.exercise?.loadType, .machineStack)
                 XCTAssertEqual(payload.startingLoadValue, 80)
@@ -1111,6 +1114,7 @@ final class FitnessAppTests: XCTestCase {
         )
 
         let didAdd = await viewModel.addAndSelectSubstitute(
+            exerciseID: exerciseID,
             form: form,
             startingLoadValue: 80,
             progressionIncrement: 10

@@ -127,8 +127,9 @@ struct ActiveWorkoutView: View {
             NewWorkoutSubstituteView(
                 startingLoadValue: nil,
                 progressionIncrement: nil
-            ) { form, startingLoadValue, progressionIncrement in
+            ) { exerciseID, form, startingLoadValue, progressionIncrement in
                 await viewModel.addAndSelectSubstitute(
+                    exerciseID: exerciseID,
                     form: form,
                     startingLoadValue: startingLoadValue,
                     progressionIncrement: progressionIncrement

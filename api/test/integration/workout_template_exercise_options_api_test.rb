@@ -37,36 +37,50 @@ class WorkoutTemplateExerciseOptionsApiTest < ActionDispatch::IntegrationTest
     assert_equal 1, slot.exercise_options.count
   end
 
-  test "creates a new exercise and option in one request" do
+  test "creates a new exercise and option once when the request is replayed" do
     slot = create_slot
+    exercise_id = SecureRandom.uuid
+    params = {
+      workout_template_exercise_option: {
+        workout_template_slot_id: slot.id,
+        exercise_id:,
+        starting_load_value: 75,
+        progression_increment: 5,
+        exercise: {
+          name: "Incline Machine Press",
+          primary_muscle_group: "Chest",
+          secondary_muscle_groups: [ "Shoulders", "Triceps" ],
+          load_type: "machine_stack",
+          notes: "Alternative when dumbbells are occupied."
+        }
+      }
+    }
 
     assert_difference -> { Exercise.count }, 1 do
       assert_difference -> { WorkoutTemplateExerciseOption.count }, 1 do
-        post "/api/v1/workout_template_exercise_options", params: {
-          workout_template_exercise_option: {
-            workout_template_slot_id: slot.id,
-            starting_load_value: 75,
-            progression_increment: 5,
-            exercise: {
-              name: "Incline Machine Press",
-              primary_muscle_group: "Chest",
-              secondary_muscle_groups: [ "Shoulders", "Triceps" ],
-              load_type: "machine_stack",
-              notes: "Alternative when dumbbells are occupied."
-            }
-          }
-        }
+        post "/api/v1/workout_template_exercise_options", params:
       end
     end
 
     assert_response :created
     body = response.parsed_body.fetch("workout_template_exercise_option")
     exercise = Exercise.find(body.fetch("exercise_id"))
+    assert_equal exercise_id, exercise.id
     assert_equal "Incline Machine Press", exercise.name
     assert_equal [ "Shoulders", "Triceps" ], exercise.secondary_muscle_groups
     assert_equal "machine_stack", body.dig("exercise", "load_type")
     assert_equal 75.0, body.fetch("starting_load_value")
     assert_equal 5.0, body.fetch("progression_increment")
+
+    assert_no_difference [ -> { Exercise.count }, -> { WorkoutTemplateExerciseOption.count } ] do
+      post "/api/v1/workout_template_exercise_options", params:
+    end
+
+    assert_response :success
+    replayed_body = response.parsed_body.fetch("workout_template_exercise_option")
+    assert_equal body.fetch("id"), replayed_body.fetch("id")
+    assert_equal exercise_id, replayed_body.fetch("exercise_id")
+    assert_equal 1, slot.reload.lock_version
   end
 
   private
