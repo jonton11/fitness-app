@@ -42,7 +42,13 @@ module Api
           payload: template_payload
         )
 
-        render_resource(:workout_template, template, serializer: Api::V1::WorkoutTemplateSerializer, status: :created)
+        render_resource(
+          :workout_template,
+          template,
+          serializer: Api::V1::WorkoutTemplateSerializer,
+          serializer_options: workout_template_serializer_options([ template ], load_completed_history: false),
+          status: :created
+        )
       end
 
       def update
@@ -51,7 +57,12 @@ module Api
           payload: template_payload
         )
 
-        render_resource(:workout_template, template, serializer: Api::V1::WorkoutTemplateSerializer)
+        render_resource(
+          :workout_template,
+          template,
+          serializer: Api::V1::WorkoutTemplateSerializer,
+          serializer_options: workout_template_serializer_options([ template ])
+        )
       end
 
       private
@@ -66,11 +77,11 @@ module Api
                               .find(params[:id])
       end
 
-      def workout_template_serializer_options(templates)
+      def workout_template_serializer_options(templates, load_completed_history: true)
         option_ids = templates.flat_map do |template|
           template.slots.flat_map { |slot| slot.exercise_options.map(&:id) }
         end
-        completed_option_ids = if option_ids.empty?
+        completed_option_ids = if option_ids.empty? || !load_completed_history
           []
         else
           WorkoutSessionExercise
@@ -83,7 +94,10 @@ module Api
             .pluck(:workout_template_exercise_option_id)
         end
 
-        { completed_history_by_option_id: completed_option_ids.index_with(true) }
+        completed_history_by_option_id = option_ids.index_with(false)
+        completed_option_ids.each { |option_id| completed_history_by_option_id[option_id] = true }
+
+        { completed_history_by_option_id: }
       end
 
       def template_payload

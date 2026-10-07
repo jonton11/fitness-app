@@ -47,7 +47,7 @@ module Api
       def completed_history_for(option)
         return if completed_history_by_option_id.nil?
 
-        completed_history_by_option_id.key?(option.id)
+        completed_history_by_option_id.fetch(option.id, false)
       end
 
       def serialize_set_prescription(prescription)

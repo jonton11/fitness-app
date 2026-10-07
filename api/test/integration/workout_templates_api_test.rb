@@ -83,7 +83,9 @@ class WorkoutTemplatesApiTest < ActionDispatch::IntegrationTest
       assert_difference -> { WorkoutTemplateSlot.count }, 1 do
         assert_difference -> { WorkoutTemplateExerciseOption.count }, 2 do
           assert_difference -> { WorkoutTemplateSetPrescription.count }, 2 do
-            post "/api/v1/workout_templates", params: template_payload
+            assert_no_queries_match(/FROM "workout_session_exercises"/) do
+              post "/api/v1/workout_templates", params: template_payload
+            end
           end
         end
       end
@@ -144,47 +146,54 @@ class WorkoutTemplatesApiTest < ActionDispatch::IntegrationTest
     slot = template.slots.first
     prescription = slot.set_prescriptions.first
 
-    patch "/api/v1/workout_templates/#{template.id}", params: {
-      workout_template: {
-        name: "Upper",
-        notes: "Updated",
-        lock_version: template.lock_version,
-        slots: [
-          {
-            id: slot.id,
-            position: 1,
-            label: "Incline Press",
-            default_exercise_id: incline_press.id,
-            rest_seconds: 150,
-            lock_version: slot.lock_version,
-            exercise_options: [
+    assert_no_queries_match(/SELECT "workout_session_exercises"\.\*/) do
+      assert_queries_match(
+        /SELECT DISTINCT .*workout_template_exercise_option_id.*FROM "workout_session_exercises"/,
+        count: 1
+      ) do
+        patch "/api/v1/workout_templates/#{template.id}", params: {
+          workout_template: {
+            name: "Upper",
+            notes: "Updated",
+            lock_version: template.lock_version,
+            slots: [
               {
-                exercise_id: incline_press.id,
+                id: slot.id,
                 position: 1,
-                starting_load_value: 65,
-                next_load_value: 70,
-                progression_increment: 5
-              },
-              {
-                exercise_id: smith_press.id,
-                position: 2,
-                progression_increment: 10
-              }
-            ],
-            set_prescriptions: [
-              {
-                id: prescription.id,
-                position: 1,
-                set_type: "working",
-                rep_min: 6,
-                rep_max: 10,
-                load_strategy: "working_load"
+                label: "Incline Press",
+                default_exercise_id: incline_press.id,
+                rest_seconds: 150,
+                lock_version: slot.lock_version,
+                exercise_options: [
+                  {
+                    exercise_id: incline_press.id,
+                    position: 1,
+                    starting_load_value: 65,
+                    next_load_value: 70,
+                    progression_increment: 5
+                  },
+                  {
+                    exercise_id: smith_press.id,
+                    position: 2,
+                    progression_increment: 10
+                  }
+                ],
+                set_prescriptions: [
+                  {
+                    id: prescription.id,
+                    position: 1,
+                    set_type: "working",
+                    rep_min: 6,
+                    rep_max: 10,
+                    load_strategy: "working_load"
+                  }
+                ]
               }
             ]
           }
-        ]
-      }
-    }
+        }
+      end
+    end
 
     assert_response :success
     body = response.parsed_body.fetch("workout_template")
