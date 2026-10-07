@@ -3,6 +3,7 @@ Rails.application.routes.draw do
 
   namespace :api do
     namespace :v1 do
+      resource :session, only: %i[show create destroy]
       resources :exercises, only: %i[index show create update]
       resources :workout_templates, only: %i[index show create update]
       resources :workout_template_exercise_options, only: %i[create]

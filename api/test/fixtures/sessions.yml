@@ -1,0 +1,5 @@
+active_browser:
+  id: 20000000-0000-0000-0000-000000000001
+  user_id: 10000000-0000-0000-0000-000000000001
+  ip_address: 127.0.0.1
+  user_agent: Rails test

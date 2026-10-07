@@ -1,4 +1,7 @@
 class ApplicationController < ActionController::API
+  include ActionController::Cookies
+  include Authentication
+
   ERROR_CODE_INVALID = "invalid"
   ERROR_CODE_NOT_FOUND = "not_found"
   ERROR_CODE_STALE = "stale"
