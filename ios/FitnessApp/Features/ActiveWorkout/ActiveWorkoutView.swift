@@ -1,10 +1,25 @@
 import SwiftUI
 
 struct ActiveWorkoutView: View {
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: ActiveWorkoutViewModel
+    @State private var isConfirmingCancel = false
+    @State private var isConfirmingSkip = false
+    @State private var isShowingExerciseSwap = false
+    @State private var isShowingNewExercise = false
 
-    init(session: WorkoutSession, store: ActiveWorkoutStore = .live) {
-        _viewModel = StateObject(wrappedValue: ActiveWorkoutViewModel(session: session, store: store))
+    init(
+        session: WorkoutSession,
+        workoutTemplate: WorkoutTemplate? = nil,
+        store: ActiveWorkoutStore = .live
+    ) {
+        _viewModel = StateObject(
+            wrappedValue: ActiveWorkoutViewModel(
+                session: session,
+                workoutTemplate: workoutTemplate,
+                store: store
+            )
+        )
     }
 
     var body: some View {
@@ -67,7 +82,35 @@ struct ActiveWorkoutView: View {
                     } label: {
                         Label("Finish Workout", systemImage: "checkmark.circle")
                     }
-                    .disabled(viewModel.session.status == .completed)
+                    .disabled(viewModel.session.status != .active)
+
+                    Button {
+                        isConfirmingSkip = true
+                    } label: {
+                        Label("Skip Exercise", systemImage: "forward.end")
+                    }
+                    .disabled(viewModel.session.status != .active || viewModel.currentSet == nil)
+
+                    Button {
+                        isShowingExerciseSwap = true
+                    } label: {
+                        Label("Swap Exercise", systemImage: "arrow.left.arrow.right")
+                    }
+                    .disabled(!viewModel.canModifySelectedExercise || viewModel.substitutionOptions.isEmpty)
+
+                    Button {
+                        isShowingNewExercise = true
+                    } label: {
+                        Label("Add Exercise", systemImage: "plus.circle")
+                    }
+                    .disabled(!viewModel.canModifySelectedExercise)
+
+                    Button(role: .destructive) {
+                        isConfirmingCancel = true
+                    } label: {
+                        Label("Cancel Workout", systemImage: "xmark.circle")
+                    }
+                    .disabled(viewModel.session.status != .active)
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
@@ -77,12 +120,65 @@ struct ActiveWorkoutView: View {
         .task {
             await viewModel.retryPendingSync()
         }
+        .sheet(isPresented: $isShowingExerciseSwap) {
+            WorkoutExerciseSubstitutionView(viewModel: viewModel)
+        }
+        .sheet(isPresented: $isShowingNewExercise) {
+            NewWorkoutSubstituteView(
+                startingLoadValue: nil,
+                progressionIncrement: nil
+            ) { exerciseID, form, startingLoadValue, progressionIncrement in
+                await viewModel.addAndSelectSubstitute(
+                    exerciseID: exerciseID,
+                    form: form,
+                    startingLoadValue: startingLoadValue,
+                    progressionIncrement: progressionIncrement
+                )
+            }
+        }
+        .confirmationDialog(
+            skipConfirmationTitle,
+            isPresented: $isConfirmingSkip,
+            titleVisibility: .visible
+        ) {
+            Button("Skip Exercise", role: .destructive) {
+                Task {
+                    _ = await viewModel.skipSelectedExercise()
+                }
+            }
+        } message: {
+            Text("Completed sets are preserved. Remaining sets will be marked not performed.")
+        }
+        .confirmationDialog(
+            "Cancel this workout?",
+            isPresented: $isConfirmingCancel,
+            titleVisibility: .visible
+        ) {
+            Button("Cancel Workout", role: .destructive) {
+                Task {
+                    let didCancel = await viewModel.cancelWorkout()
+                    if didCancel && viewModel.pendingSyncCount == 0 {
+                        dismiss()
+                    }
+                }
+            }
+        } message: {
+            Text("Logged sets are preserved, but this workout will not affect progression.")
+        }
     }
 
     private var completedExerciseCount: Int {
         viewModel.session.exercises.filter { exercise in
             viewModel.completedSetCount(for: exercise) == exercise.workoutSessionSets.count
         }.count
+    }
+
+    private var skipConfirmationTitle: String {
+        guard let selectedExercise = viewModel.selectedExercise else {
+            return "Skip this exercise?"
+        }
+
+        return "Skip \(selectedExercise.selectedExercise.name)?"
     }
 }
 
@@ -92,35 +188,64 @@ private struct ActiveWorkoutExerciseRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: completedSets == exercise.workoutSessionSets.count ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(completedSets == exercise.workoutSessionSets.count ? .green : .secondary)
+            Image(systemName: statusIcon)
+                .foregroundStyle(statusColor)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(exercise.label)
+                Text(exercise.selectedExercise.name)
                     .font(.headline)
 
-                Text("\(completedSets) of \(exercise.workoutSessionSets.count) sets")
+                Text(statusText)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 4)
     }
+
+    private var statusIcon: String {
+        if exercise.status == .skipped {
+            return "forward.end.circle.fill"
+        }
+
+        return completedSets == exercise.workoutSessionSets.count ? "checkmark.circle.fill" : "circle"
+    }
+
+    private var statusColor: Color {
+        exercise.status == .skipped || completedSets < exercise.workoutSessionSets.count ? .secondary : .green
+    }
+
+    private var statusText: String {
+        if exercise.status == .skipped {
+            return "Skipped"
+        }
+
+        let performedSets = exercise.workoutSessionSets.count { $0.completionState.isPerformed }
+        if completedSets == exercise.workoutSessionSets.count,
+           performedSets < exercise.workoutSessionSets.count {
+            return "\(performedSets) sets logged; rest skipped"
+        }
+
+        return "\(performedSets) of \(exercise.workoutSessionSets.count) sets logged"
+    }
 }
 
 private struct ActiveSetLoggingView: View {
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: ActiveWorkoutViewModel
     let exercise: WorkoutSessionExercise
+    @State private var isConfirmingSkip = false
+    @State private var isShowingExerciseSwap = false
 
     var body: some View {
         Form {
             if let currentSet = viewModel.currentSet {
                 Section {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text(exercise.label)
+                        Text(activeExercise.selectedExercise.name)
                             .font(.title2.weight(.bold))
 
-                        Text("Set \(currentSet.position) of \(exercise.workoutSessionSets.count)")
+                        Text("Set \(currentSet.position) of \(activeExercise.workoutSessionSets.count)")
                             .font(.headline)
 
                         Text(targetText(for: currentSet))
@@ -175,6 +300,22 @@ private struct ActiveSetLoggingView: View {
                 } label: {
                     Label("Save Set", systemImage: "checkmark.circle")
                 }
+
+                Section {
+                    Button {
+                        isShowingExerciseSwap = true
+                    } label: {
+                        Label("Swap Exercise", systemImage: "arrow.left.arrow.right")
+                    }
+                    .disabled(!viewModel.canModifySelectedExercise || viewModel.substitutionOptions.isEmpty)
+
+                    Button {
+                        isConfirmingSkip = true
+                    } label: {
+                        Label("Skip Exercise", systemImage: "forward.end")
+                    }
+                    .disabled(viewModel.currentSet == nil)
+                }
             } else {
                 Section {
                     ContentUnavailableView(
@@ -194,16 +335,38 @@ private struct ActiveSetLoggingView: View {
                 }
             }
         }
-        .navigationTitle(exercise.label)
+        .navigationTitle(activeExercise.selectedExercise.name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             viewModel.selectExercise(exercise)
         }
+        .sheet(isPresented: $isShowingExerciseSwap) {
+            WorkoutExerciseSubstitutionView(viewModel: viewModel)
+        }
+        .confirmationDialog(
+            "Skip \(activeExercise.selectedExercise.name)?",
+            isPresented: $isConfirmingSkip,
+            titleVisibility: .visible
+        ) {
+            Button("Skip Exercise", role: .destructive) {
+                Task {
+                    if await viewModel.skipSelectedExercise() {
+                        dismiss()
+                    }
+                }
+            }
+        } message: {
+            Text("Completed sets are preserved. Remaining sets will be marked not performed.")
+        }
     }
 
     private func targetText(for set: WorkoutSessionSet) -> String {
-        let load = set.plannedLoadValue.map { "\($0.formatted()) \(exercise.selectedExercise.loadType.shortLabel)" } ?? "Bodyweight"
+        let load = set.plannedLoadValue.map { "\($0.formatted()) \(activeExercise.selectedExercise.loadType.shortLabel)" } ?? "Bodyweight"
         return "Target: \(load) x \(set.targetRepMin)-\(set.targetRepMax)"
+    }
+
+    private var activeExercise: WorkoutSessionExercise {
+        viewModel.session.exercises.first { $0.id == exercise.id } ?? exercise
     }
 
     private func restText(restEndsAt: Date, now: Date) -> String {

@@ -13,6 +13,51 @@ class WorkoutTemplatesApiTest < ActionDispatch::IntegrationTest
     assert_equal({ "limit" => 50, "offset" => 0, "total" => 1 }, body.fetch("meta"))
   end
 
+  test "lists planned loads without materializing workout history" do
+    template = create_template(name: "Upper Body")
+    slot = template.slots.first
+    option = slot.exercise_options.first
+    session = WorkoutSession.create!(
+      workout_template: template,
+      workout_template_name: template.name,
+      status: "completed",
+      started_at: 1.day.ago,
+      completed_at: Time.current
+    )
+    session.exercises.create!(
+      workout_template_slot: slot,
+      workout_template_exercise_option: option,
+      selected_exercise: option.exercise,
+      position: 1,
+      label: slot.label,
+      selected_exercise_name: option.exercise.name,
+      selected_exercise_load_type: option.exercise.load_type,
+      rest_seconds: slot.rest_seconds,
+      status: "completed"
+    )
+
+    assert_no_queries_match(/SELECT "workout_session_exercises"\.\*/) do
+      assert_queries_match(
+        /SELECT DISTINCT .*workout_template_exercise_option_id.*FROM "workout_session_exercises"/,
+        count: 1
+      ) do
+        get "/api/v1/workout_templates"
+      end
+    end
+
+    assert_response :success
+    planned_load = response.parsed_body.dig(
+      "workout_templates",
+      0,
+      "slots",
+      0,
+      "exercise_options",
+      0,
+      "planned_working_load_value"
+    )
+    assert_equal 65.0, planned_load
+  end
+
   test "lists archived workout templates" do
     create_template(name: "Upper Body")
     create_template(name: "Archived Legs", archived_at: Time.current)
@@ -38,7 +83,9 @@ class WorkoutTemplatesApiTest < ActionDispatch::IntegrationTest
       assert_difference -> { WorkoutTemplateSlot.count }, 1 do
         assert_difference -> { WorkoutTemplateExerciseOption.count }, 2 do
           assert_difference -> { WorkoutTemplateSetPrescription.count }, 2 do
-            post "/api/v1/workout_templates", params: template_payload
+            assert_no_queries_match(/FROM "workout_session_exercises"/) do
+              post "/api/v1/workout_templates", params: template_payload
+            end
           end
         end
       end
@@ -63,6 +110,20 @@ class WorkoutTemplatesApiTest < ActionDispatch::IntegrationTest
     assert_equal 65.0, default_option.fetch("next_load_value")
     assert_nil default_option.fetch("calculated_next_load_value")
     assert_equal 5.0, default_option.fetch("progression_increment")
+    assert_equal 60.0, default_option.fetch("planned_working_load_value")
+    assert_equal(
+      [
+        {
+          "workout_template_set_prescription_id" => slot.fetch("set_prescriptions").first.fetch("id"),
+          "planned_load_value" => 39.0
+        },
+        {
+          "workout_template_set_prescription_id" => slot.fetch("set_prescriptions").second.fetch("id"),
+          "planned_load_value" => 60.0
+        }
+      ],
+      default_option.fetch("planned_session_sets")
+    )
 
     warmup = slot.fetch("set_prescriptions").first
     assert_equal "warmup", warmup.fetch("set_type")
@@ -85,47 +146,54 @@ class WorkoutTemplatesApiTest < ActionDispatch::IntegrationTest
     slot = template.slots.first
     prescription = slot.set_prescriptions.first
 
-    patch "/api/v1/workout_templates/#{template.id}", params: {
-      workout_template: {
-        name: "Upper",
-        notes: "Updated",
-        lock_version: template.lock_version,
-        slots: [
-          {
-            id: slot.id,
-            position: 1,
-            label: "Incline Press",
-            default_exercise_id: incline_press.id,
-            rest_seconds: 150,
-            lock_version: slot.lock_version,
-            exercise_options: [
+    assert_no_queries_match(/SELECT "workout_session_exercises"\.\*/) do
+      assert_queries_match(
+        /SELECT DISTINCT .*workout_template_exercise_option_id.*FROM "workout_session_exercises"/,
+        count: 1
+      ) do
+        patch "/api/v1/workout_templates/#{template.id}", params: {
+          workout_template: {
+            name: "Upper",
+            notes: "Updated",
+            lock_version: template.lock_version,
+            slots: [
               {
-                exercise_id: incline_press.id,
+                id: slot.id,
                 position: 1,
-                starting_load_value: 65,
-                next_load_value: 70,
-                progression_increment: 5
-              },
-              {
-                exercise_id: smith_press.id,
-                position: 2,
-                progression_increment: 10
-              }
-            ],
-            set_prescriptions: [
-              {
-                id: prescription.id,
-                position: 1,
-                set_type: "working",
-                rep_min: 6,
-                rep_max: 10,
-                load_strategy: "working_load"
+                label: "Incline Press",
+                default_exercise_id: incline_press.id,
+                rest_seconds: 150,
+                lock_version: slot.lock_version,
+                exercise_options: [
+                  {
+                    exercise_id: incline_press.id,
+                    position: 1,
+                    starting_load_value: 65,
+                    next_load_value: 70,
+                    progression_increment: 5
+                  },
+                  {
+                    exercise_id: smith_press.id,
+                    position: 2,
+                    progression_increment: 10
+                  }
+                ],
+                set_prescriptions: [
+                  {
+                    id: prescription.id,
+                    position: 1,
+                    set_type: "working",
+                    rep_min: 6,
+                    rep_max: 10,
+                    load_strategy: "working_load"
+                  }
+                ]
               }
             ]
           }
-        ]
-      }
-    }
+        }
+      end
+    end
 
     assert_response :success
     body = response.parsed_body.fetch("workout_template")

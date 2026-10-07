@@ -25,12 +25,25 @@ module Api
         started_at = parsed_started_at
         return if performed?
 
-        session = WorkoutSessions::Start.call(
-          workout_template: workout_template,
-          started_at:
-        )
+        result = if session_payload[:id].present?
+          WorkoutSessions::CreateFromSnapshot.call(
+            workout_template:,
+            attributes: session_payload.merge(started_at:)
+          )
+        else
+          session = WorkoutSessions::Start.call(
+            workout_template:,
+            started_at:
+          )
+          WorkoutSessions::CreateFromSnapshot::Result.new(workout_session: session, created: true)
+        end
 
-        render_resource(:workout_session, session.reload, serializer: Api::V1::WorkoutSessionSerializer, status: :created)
+        render_resource(
+          :workout_session,
+          result.workout_session.reload,
+          serializer: Api::V1::WorkoutSessionSerializer,
+          status: result.created ? :created : :ok
+        )
       end
 
       def show
@@ -41,20 +54,26 @@ module Api
         attributes = session_update_attributes
         return if performed?
 
-        unless attributes[:status] == "completed"
+        session = case attributes[:status]
+        when "completed"
+          WorkoutSessions::Complete.call(
+            workout_session:,
+            attributes:
+          )
+        when "canceled"
+          WorkoutSessions::Cancel.call(
+            workout_session:,
+            attributes:
+          )
+        else
           render_api_error(
             field: "status",
             code: ERROR_CODE_INVALID,
-            message: "Status must be completed",
+            message: "Status must be completed or canceled",
             status: :unprocessable_content
           )
           return
         end
-
-        session = WorkoutSessions::Complete.call(
-          workout_session:,
-          attributes:
-        )
 
         render_resource(:workout_session, session, serializer: Api::V1::WorkoutSessionSerializer)
       end
@@ -68,23 +87,63 @@ module Api
       end
 
       def workout_template
-        @workout_template ||= WorkoutTemplate
-                              .includes(slots: [ :default_exercise, { exercise_options: :exercise }, :set_prescriptions ])
-                              .where(archived_at: nil)
-                              .find(session_payload[:workout_template_id])
+        @workout_template ||= begin
+          templates = WorkoutTemplate.includes(slots: [
+            :default_exercise,
+            :set_prescriptions,
+            { exercise_options: [ :exercise, { workout_session_exercises: :workout_session } ] }
+          ])
+          templates = templates.where(archived_at: nil) if session_payload[:id].blank?
+          templates.find(session_payload[:workout_template_id])
+        end
       end
 
       def session_payload
-        @session_payload ||= params.require(:workout_session).permit(:workout_template_id, :started_at)
+        @session_payload ||= params.require(:workout_session).permit(
+          :id,
+          :workout_template_id,
+          :workout_template_name,
+          :started_at,
+          exercises: [
+            :id,
+            :workout_template_slot_id,
+            :workout_template_exercise_option_id,
+            :selected_exercise_id,
+            :position,
+            :label,
+            :selected_exercise_name,
+            :selected_exercise_load_type,
+            :rest_seconds,
+            :planned_working_load_value,
+            :progression_increment,
+            workout_session_sets: [
+              :id,
+              :workout_template_set_prescription_id,
+              :position,
+              :set_type,
+              :target_rep_min,
+              :target_rep_max,
+              :load_strategy,
+              :prescribed_load_value,
+              :planned_load_value
+            ]
+          ]
+        )
       end
 
       def session_update_payload
-        @session_update_payload ||= params.require(:workout_session).permit(:status, :completed_at, :lock_version)
+        @session_update_payload ||= params.require(:workout_session).permit(
+          :status,
+          :completed_at,
+          :canceled_at,
+          :lock_version
+        )
       end
 
       def session_update_attributes
         session_update_payload.slice(:status, :lock_version).tap do |attributes|
           attributes[:completed_at] = parsed_completed_at if session_update_payload.key?(:completed_at)
+          attributes[:canceled_at] = parsed_canceled_at if session_update_payload.key?(:canceled_at)
         end
       end
 
@@ -133,6 +192,19 @@ module Api
           field: "completed_at",
           code: ERROR_CODE_INVALID,
           message: "Completed at must be an ISO-8601 timestamp",
+          status: :unprocessable_content
+        )
+      end
+
+      def parsed_canceled_at
+        return Time.current if session_update_payload[:canceled_at].blank?
+
+        Time.zone.iso8601(session_update_payload[:canceled_at])
+      rescue ArgumentError
+        render_api_error(
+          field: "canceled_at",
+          code: ERROR_CODE_INVALID,
+          message: "Canceled at must be an ISO-8601 timestamp",
           status: :unprocessable_content
         )
       end

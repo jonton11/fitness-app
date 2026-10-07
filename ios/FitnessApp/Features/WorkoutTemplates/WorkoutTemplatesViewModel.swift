@@ -5,37 +5,67 @@ final class WorkoutTemplatesViewModel: ObservableObject {
     @Published private(set) var templates: [WorkoutTemplate] = []
     @Published private(set) var exercises: [Exercise] = []
     @Published private(set) var activeSession: WorkoutSession?
+    @Published private(set) var activeWorkoutTemplate: WorkoutTemplate?
     @Published private(set) var isLoading = false
     @Published private(set) var startingTemplateID: UUID?
     @Published var errorMessage: String?
 
     private let templateAPIClient: WorkoutTemplateAPIClient
     private let exerciseAPIClient: ExerciseAPIClient
-    private let sessionAPIClient: WorkoutSessionAPIClient
     private let activeWorkoutStore: ActiveWorkoutStore
+    private let configurationStore: WorkoutConfigurationStore
+    private let now: () -> Date
+    private let makeID: () -> UUID
 
     init(
         templateAPIClient: WorkoutTemplateAPIClient = .live,
         exerciseAPIClient: ExerciseAPIClient = .live,
-        sessionAPIClient: WorkoutSessionAPIClient = .live,
-        activeWorkoutStore: ActiveWorkoutStore = .live
+        activeWorkoutStore: ActiveWorkoutStore = .live,
+        configurationStore: WorkoutConfigurationStore = .live,
+        now: @escaping () -> Date = Date.init,
+        makeID: @escaping () -> UUID = UUID.init
     ) {
         self.templateAPIClient = templateAPIClient
         self.exerciseAPIClient = exerciseAPIClient
-        self.sessionAPIClient = sessionAPIClient
         self.activeWorkoutStore = activeWorkoutStore
+        self.configurationStore = configurationStore
+        self.now = now
+        self.makeID = makeID
     }
 
     func load() async {
         isLoading = true
         errorMessage = nil
         refreshActiveSession()
+        var loadedCachedConfiguration = false
 
         do {
-            templates = try await templateAPIClient.listWorkoutTemplates()
-            exercises = try await exerciseAPIClient.listExercises()
+            if let cachedConfiguration = try configurationStore.load() {
+                templates = cachedConfiguration.templates
+                exercises = cachedConfiguration.exercises
+                loadedCachedConfiguration = true
+            }
         } catch {
-            errorMessage = "Could not load workout templates."
+            errorMessage = "Could not load saved workout templates."
+        }
+
+        do {
+            async let fetchedTemplates = templateAPIClient.listWorkoutTemplates()
+            async let fetchedExercises = exerciseAPIClient.listExercises()
+            let (templates, exercises) = try await (fetchedTemplates, fetchedExercises)
+            let configuration = WorkoutConfigurationSnapshot(templates: templates, exercises: exercises)
+            self.templates = configuration.templates
+            self.exercises = configuration.exercises
+            errorMessage = nil
+            do {
+                try configurationStore.save(configuration)
+            } catch {
+                errorMessage = "Could not save workout templates for offline use."
+            }
+        } catch {
+            if !loadedCachedConfiguration {
+                errorMessage = "Could not load workout templates."
+            }
         }
 
         isLoading = false
@@ -47,6 +77,7 @@ final class WorkoutTemplatesViewModel: ObservableObject {
         do {
             if let activeWorkoutState = try activeWorkoutStore.load() {
                 activeSession = activeWorkoutState.session
+                activeWorkoutTemplate = activeWorkoutState.workoutTemplate
                 errorMessage = "Finish or cancel the active workout before starting another."
                 return nil
             }
@@ -61,10 +92,17 @@ final class WorkoutTemplatesViewModel: ObservableObject {
         }
 
         do {
-            let session = try await sessionAPIClient.startWorkoutSession(templateID: template.id)
-            try activeWorkoutStore.save(ActiveWorkoutState(session: session))
-            activeSession = session
-            return session
+            let draft = try WorkoutSessionDraft(template: template, startedAt: now(), makeID: makeID)
+            try activeWorkoutStore.save(
+                ActiveWorkoutState(
+                    session: draft.session,
+                    workoutTemplate: template,
+                    pendingSessionCreation: PendingWorkoutSessionCreation(payload: draft.payload)
+                )
+            )
+            activeSession = draft.session
+            activeWorkoutTemplate = template
+            return draft.session
         } catch {
             errorMessage = "Could not start workout."
             return nil
@@ -73,7 +111,9 @@ final class WorkoutTemplatesViewModel: ObservableObject {
 
     func refreshActiveSession() {
         do {
-            activeSession = try activeWorkoutStore.load()?.session
+            let state = try activeWorkoutStore.load()
+            activeSession = state?.session
+            activeWorkoutTemplate = state?.workoutTemplate
         } catch {
             errorMessage = "Could not load active workout."
         }
@@ -86,6 +126,9 @@ final class WorkoutTemplatesViewModel: ObservableObject {
             let payload = form.payload(lockVersion: template?.lockVersion)
             let savedTemplate = try await saveTemplate(payload, existingTemplate: template)
             upsert(savedTemplate)
+            try configurationStore.save(
+                WorkoutConfigurationSnapshot(templates: templates, exercises: exercises)
+            )
             return true
         } catch {
             errorMessage = "Could not save workout template."

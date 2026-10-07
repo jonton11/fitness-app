@@ -20,6 +20,19 @@ class WorkoutTemplateSetPrescription < ApplicationRecord
   validate :rep_range_is_ordered
   validate :load_value_matches_strategy
 
+  def planned_load_value(planned_working_load_value)
+    case load_strategy
+    when "working_load"
+      planned_working_load_value
+    when "percentage_of_working_load"
+      return if planned_working_load_value.blank? || load_value.blank?
+
+      planned_working_load_value * load_value / 100
+    when "explicit"
+      load_value
+    end
+  end
+
   private
 
   def rep_range_is_ordered

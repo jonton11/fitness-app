@@ -21,12 +21,14 @@ class ApplicationController < ActionController::API
     }, status:
   end
 
-  def render_resource(key, record, serializer:, status: :ok)
-    render json: { key => serialize_record(record, serializer:) }, status:
+  def render_resource(key, record, serializer:, serializer_options: {}, status: :ok)
+    render json: { key => serialize_record(record, serializer:, serializer_options:) }, status:
   end
 
-  def render_collection(key, records, serializer:, meta: nil, status: :ok)
-    response_body = { key => records.map { |record| serialize_record(record, serializer:) } }
+  def render_collection(key, records, serializer:, serializer_options: {}, meta: nil, status: :ok)
+    response_body = {
+      key => records.map { |record| serialize_record(record, serializer:, serializer_options:) }
+    }
     response_body[:meta] = meta if meta.present?
 
     render json: response_body, status:
@@ -40,7 +42,7 @@ class ApplicationController < ActionController::API
     }
   end
 
-  def serialize_record(record, serializer:)
-    serializer.new(record).as_json
+  def serialize_record(record, serializer:, serializer_options:)
+    serializer.new(record, **serializer_options).as_json
   end
 end

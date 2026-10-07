@@ -6,7 +6,13 @@ module Api
       rescue_from ActiveRecord::StaleObjectError, with: :render_conflict
 
       def index
-        templates = WorkoutTemplate.includes(slots: [ :default_exercise, :exercise_options, :set_prescriptions ]).order(:name)
+        templates = WorkoutTemplate
+                    .includes(slots: [
+                      :default_exercise,
+                      :set_prescriptions,
+                      { exercise_options: :exercise }
+                    ])
+                    .order(:name)
         templates = apply_status_filter(templates)
         templates = apply_search(templates)
         total = templates.count
@@ -16,12 +22,18 @@ module Api
           :workout_templates,
           templates,
           serializer: Api::V1::WorkoutTemplateSerializer,
+          serializer_options: workout_template_serializer_options(templates),
           meta: { limit:, offset:, total: }
         )
       end
 
       def show
-        render_resource(:workout_template, workout_template, serializer: Api::V1::WorkoutTemplateSerializer)
+        render_resource(
+          :workout_template,
+          workout_template,
+          serializer: Api::V1::WorkoutTemplateSerializer,
+          serializer_options: workout_template_serializer_options([ workout_template ])
+        )
       end
 
       def create
@@ -30,7 +42,13 @@ module Api
           payload: template_payload
         )
 
-        render_resource(:workout_template, template, serializer: Api::V1::WorkoutTemplateSerializer, status: :created)
+        render_resource(
+          :workout_template,
+          template,
+          serializer: Api::V1::WorkoutTemplateSerializer,
+          serializer_options: workout_template_serializer_options([ template ], load_completed_history: false),
+          status: :created
+        )
       end
 
       def update
@@ -39,15 +57,47 @@ module Api
           payload: template_payload
         )
 
-        render_resource(:workout_template, template, serializer: Api::V1::WorkoutTemplateSerializer)
+        render_resource(
+          :workout_template,
+          template,
+          serializer: Api::V1::WorkoutTemplateSerializer,
+          serializer_options: workout_template_serializer_options([ template ])
+        )
       end
 
       private
 
       def workout_template
         @workout_template ||= WorkoutTemplate
-                              .includes(slots: [ :default_exercise, :exercise_options, :set_prescriptions ])
+                              .includes(slots: [
+                                :default_exercise,
+                                :set_prescriptions,
+                                { exercise_options: :exercise }
+                              ])
                               .find(params[:id])
+      end
+
+      def workout_template_serializer_options(templates, load_completed_history: true)
+        option_ids = templates.flat_map do |template|
+          template.slots.flat_map { |slot| slot.exercise_options.map(&:id) }
+        end
+        completed_option_ids = if option_ids.empty? || !load_completed_history
+          []
+        else
+          WorkoutSessionExercise
+            .joins(:workout_session)
+            .where(
+              workout_template_exercise_option_id: option_ids,
+              workout_sessions: { status: "completed" }
+            )
+            .distinct
+            .pluck(:workout_template_exercise_option_id)
+        end
+
+        completed_history_by_option_id = option_ids.index_with(false)
+        completed_option_ids.each { |option_id| completed_history_by_option_id[option_id] = true }
+
+        { completed_history_by_option_id: }
       end
 
       def template_payload

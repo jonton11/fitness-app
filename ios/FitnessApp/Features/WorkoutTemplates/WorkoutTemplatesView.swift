@@ -91,7 +91,10 @@ struct WorkoutTemplatesView: View {
             }
             .sheet(item: $activeWorkoutSession) { session in
                 NavigationStack {
-                    ActiveWorkoutView(session: session)
+                    ActiveWorkoutView(
+                        session: session,
+                        workoutTemplate: viewModel.activeWorkoutTemplate
+                    )
                 }
                     .onDisappear {
                         viewModel.refreshActiveSession()

@@ -24,6 +24,16 @@ struct WorkoutSessionAPIClient {
         return envelope.workoutSession
     }
 
+    func createWorkoutSession(payload: WorkoutSessionCreatePayload) async throws -> WorkoutSession {
+        let envelope: WorkoutSessionEnvelope = try await request(
+            path: "/api/v1/workout_sessions",
+            method: "POST",
+            body: WorkoutSessionRequestEnvelope(workoutSession: payload)
+        )
+
+        return envelope.workoutSession
+    }
+
     func getWorkoutSession(id: UUID) async throws -> WorkoutSession {
         let envelope: WorkoutSessionEnvelope = try await request(
             path: "/api/v1/workout_sessions/\(id.uuidString)",
@@ -43,7 +53,20 @@ struct WorkoutSessionAPIClient {
         return envelope.workoutSessionSet
     }
 
-    func finishWorkoutSession(id: UUID, payload: WorkoutSessionFinishPayload) async throws -> WorkoutSession {
+    func updateWorkoutSessionExercise(
+        id: UUID,
+        payload: WorkoutSessionExerciseUpdatePayload
+    ) async throws -> WorkoutSessionExercise {
+        let envelope: WorkoutSessionExerciseEnvelope = try await request(
+            path: "/api/v1/workout_session_exercises/\(id.uuidString)",
+            method: "PATCH",
+            body: WorkoutSessionExerciseRequestEnvelope(workoutSessionExercise: payload)
+        )
+
+        return envelope.workoutSessionExercise
+    }
+
+    func updateWorkoutSession(id: UUID, payload: WorkoutSessionStatusPayload) async throws -> WorkoutSession {
         let envelope: WorkoutSessionEnvelope = try await request(
             path: "/api/v1/workout_sessions/\(id.uuidString)",
             method: "PATCH",
@@ -96,11 +119,81 @@ struct WorkoutSessionStartPayload: Codable, Equatable {
     }
 }
 
+struct WorkoutSessionCreatePayload: Codable, Equatable {
+    var id: UUID
+    var workoutTemplateID: UUID
+    var workoutTemplateName: String
+    var startedAt: String
+    var exercises: [WorkoutSessionExerciseCreatePayload]
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case workoutTemplateID = "workout_template_id"
+        case workoutTemplateName = "workout_template_name"
+        case startedAt = "started_at"
+        case exercises
+    }
+}
+
+struct WorkoutSessionExerciseCreatePayload: Codable, Equatable {
+    var id: UUID
+    var workoutTemplateSlotID: UUID?
+    var workoutTemplateExerciseOptionID: UUID?
+    var selectedExerciseID: UUID
+    var position: Int
+    var label: String
+    var selectedExerciseName: String
+    var selectedExerciseLoadType: LoadType
+    var restSeconds: Int
+    var plannedWorkingLoadValue: Double?
+    var progressionIncrement: Double?
+    var workoutSessionSets: [WorkoutSessionSetCreatePayload]
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case workoutTemplateSlotID = "workout_template_slot_id"
+        case workoutTemplateExerciseOptionID = "workout_template_exercise_option_id"
+        case selectedExerciseID = "selected_exercise_id"
+        case position
+        case label
+        case selectedExerciseName = "selected_exercise_name"
+        case selectedExerciseLoadType = "selected_exercise_load_type"
+        case restSeconds = "rest_seconds"
+        case plannedWorkingLoadValue = "planned_working_load_value"
+        case progressionIncrement = "progression_increment"
+        case workoutSessionSets = "workout_session_sets"
+    }
+}
+
+struct WorkoutSessionSetCreatePayload: Codable, Equatable {
+    var id: UUID
+    var workoutTemplateSetPrescriptionID: UUID?
+    var position: Int
+    var setType: SetType
+    var targetRepMin: Int
+    var targetRepMax: Int
+    var loadStrategy: LoadStrategy
+    var prescribedLoadValue: Double?
+    var plannedLoadValue: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case workoutTemplateSetPrescriptionID = "workout_template_set_prescription_id"
+        case position
+        case setType = "set_type"
+        case targetRepMin = "target_rep_min"
+        case targetRepMax = "target_rep_max"
+        case loadStrategy = "load_strategy"
+        case prescribedLoadValue = "prescribed_load_value"
+        case plannedLoadValue = "planned_load_value"
+    }
+}
+
 struct WorkoutSessionSetUpdatePayload: Codable, Equatable {
-    var actualReps: Int
+    var actualReps: Int?
     var actualLoadValue: Double?
     var completionState: WorkoutSessionSetCompletionState
-    var completedAt: String
+    var completedAt: String?
     var lockVersion: Int
 
     enum CodingKeys: String, CodingKey {
@@ -112,14 +205,26 @@ struct WorkoutSessionSetUpdatePayload: Codable, Equatable {
     }
 }
 
-struct WorkoutSessionFinishPayload: Codable, Equatable {
+struct WorkoutSessionExerciseUpdatePayload: Codable, Equatable {
+    var workoutTemplateExerciseOptionID: UUID
+    var lockVersion: Int
+
+    enum CodingKeys: String, CodingKey {
+        case workoutTemplateExerciseOptionID = "workout_template_exercise_option_id"
+        case lockVersion = "lock_version"
+    }
+}
+
+struct WorkoutSessionStatusPayload: Codable, Equatable {
     var status: WorkoutSessionStatus
-    var completedAt: String
+    var completedAt: String?
+    var canceledAt: String? = nil
     var lockVersion: Int
 
     enum CodingKeys: String, CodingKey {
         case status
         case completedAt = "completed_at"
+        case canceledAt = "canceled_at"
         case lockVersion = "lock_version"
     }
 }
@@ -153,5 +258,21 @@ private struct WorkoutSessionSetRequestEnvelope: Encodable {
 
     enum CodingKeys: String, CodingKey {
         case workoutSessionSet = "workout_session_set"
+    }
+}
+
+private struct WorkoutSessionExerciseRequestEnvelope: Encodable {
+    var workoutSessionExercise: WorkoutSessionExerciseUpdatePayload
+
+    enum CodingKeys: String, CodingKey {
+        case workoutSessionExercise = "workout_session_exercise"
+    }
+}
+
+private struct WorkoutSessionExerciseEnvelope: Decodable {
+    var workoutSessionExercise: WorkoutSessionExercise
+
+    enum CodingKeys: String, CodingKey {
+        case workoutSessionExercise = "workout_session_exercise"
     }
 }

@@ -38,6 +38,20 @@ struct WorkoutTemplateAPIClient {
         return envelope.workoutTemplate
     }
 
+    func createExerciseOption(
+        _ payload: WorkoutTemplateExerciseOptionCreatePayload
+    ) async throws -> WorkoutTemplateExerciseOption {
+        let envelope: WorkoutTemplateExerciseOptionEnvelope = try await request(
+            path: "/api/v1/workout_template_exercise_options",
+            method: "POST",
+            body: WorkoutTemplateExerciseOptionRequestEnvelope(
+                workoutTemplateExerciseOption: payload
+            )
+        )
+
+        return envelope.workoutTemplateExerciseOption
+    }
+
     private func request<Response: Decodable, Body: Encodable>(
         path: String,
         method: String,
@@ -88,5 +102,37 @@ private struct WorkoutTemplateRequestEnvelope: Encodable {
 
     enum CodingKeys: String, CodingKey {
         case workoutTemplate = "workout_template"
+    }
+}
+
+struct WorkoutTemplateExerciseOptionCreatePayload: Codable, Equatable {
+    var workoutTemplateSlotID: UUID
+    var exerciseID: UUID?
+    var exercise: ExercisePayload?
+    var startingLoadValue: Double?
+    var progressionIncrement: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case workoutTemplateSlotID = "workout_template_slot_id"
+        case exerciseID = "exercise_id"
+        case exercise
+        case startingLoadValue = "starting_load_value"
+        case progressionIncrement = "progression_increment"
+    }
+}
+
+private struct WorkoutTemplateExerciseOptionRequestEnvelope: Encodable {
+    var workoutTemplateExerciseOption: WorkoutTemplateExerciseOptionCreatePayload
+
+    enum CodingKeys: String, CodingKey {
+        case workoutTemplateExerciseOption = "workout_template_exercise_option"
+    }
+}
+
+private struct WorkoutTemplateExerciseOptionEnvelope: Decodable {
+    var workoutTemplateExerciseOption: WorkoutTemplateExerciseOption
+
+    enum CodingKeys: String, CodingKey {
+        case workoutTemplateExerciseOption = "workout_template_exercise_option"
     }
 }
