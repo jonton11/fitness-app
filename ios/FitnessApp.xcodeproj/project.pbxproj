@@ -31,6 +31,8 @@
 		0A0000010000000000000026 /* WorkoutSessionDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000026 /* WorkoutSessionDraft.swift */; };
 		0A0000010000000000000027 /* FitnessLocalDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000027 /* FitnessLocalDatabase.swift */; };
 		0A0000010000000000000028 /* WorkoutConfigurationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000028 /* WorkoutConfigurationStore.swift */; };
+		0A0000010000000000000029 /* WorkoutHistoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000029 /* WorkoutHistoryViewModel.swift */; };
+		0A000001000000000000002A /* WorkoutHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A000002000000000000002A /* WorkoutHistoryView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,6 +72,8 @@
 		0A0000020000000000000026 /* WorkoutSessionDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSessionDraft.swift; sourceTree = "<group>"; };
 		0A0000020000000000000027 /* FitnessLocalDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FitnessLocalDatabase.swift; sourceTree = "<group>"; };
 		0A0000020000000000000028 /* WorkoutConfigurationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutConfigurationStore.swift; sourceTree = "<group>"; };
+		0A0000020000000000000029 /* WorkoutHistoryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutHistoryViewModel.swift; sourceTree = "<group>"; };
+		0A000002000000000000002A /* WorkoutHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutHistoryView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -173,6 +177,7 @@
 				0A0000070000000000000014 /* Exercises */,
 				0A0000070000000000000015 /* WorkoutTemplates */,
 				0A0000070000000000000017 /* ActiveWorkout */,
+				0A0000070000000000000018 /* History */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -208,6 +213,15 @@
 				0A0000020000000000000025 /* WorkoutExerciseSubstitutionView.swift */,
 			);
 			path = ActiveWorkout;
+			sourceTree = "<group>";
+		};
+		0A0000070000000000000018 /* History */ = {
+			isa = PBXGroup;
+			children = (
+				0A0000020000000000000029 /* WorkoutHistoryViewModel.swift */,
+				0A000002000000000000002A /* WorkoutHistoryView.swift */,
+			);
+			path = History;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -331,6 +345,8 @@
 				0A0000010000000000000026 /* WorkoutSessionDraft.swift in Sources */,
 				0A0000010000000000000027 /* FitnessLocalDatabase.swift in Sources */,
 				0A0000010000000000000028 /* WorkoutConfigurationStore.swift in Sources */,
+				0A0000010000000000000029 /* WorkoutHistoryViewModel.swift in Sources */,
+				0A000001000000000000002A /* WorkoutHistoryView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

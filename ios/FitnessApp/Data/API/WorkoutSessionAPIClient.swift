@@ -9,6 +9,16 @@ struct WorkoutSessionAPIClient {
         session: .shared
     )
 
+    func listWorkoutSessions(status: WorkoutSessionStatus = .completed) async throws -> [WorkoutSession] {
+        let envelope: WorkoutSessionListEnvelope = try await request(
+            path: "/api/v1/workout_sessions",
+            method: "GET",
+            queryItems: [URLQueryItem(name: "status", value: status.rawValue)]
+        )
+
+        return envelope.workoutSessions
+    }
+
     func startWorkoutSession(templateID: UUID, startedAt: String? = nil) async throws -> WorkoutSession {
         let envelope: WorkoutSessionEnvelope = try await request(
             path: "/api/v1/workout_sessions",
@@ -79,9 +89,20 @@ struct WorkoutSessionAPIClient {
     private func request<Response: Decodable, Body: Encodable>(
         path: String,
         method: String,
+        queryItems: [URLQueryItem] = [],
         body: Body? = Optional<String>.none
     ) async throws -> Response {
-        var request = URLRequest(url: baseURL.appending(path: path))
+        let url = baseURL.appending(path: path)
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            throw WorkoutSessionAPIError.invalidResponse
+        }
+        components.queryItems = queryItems.isEmpty ? nil : queryItems
+
+        guard let requestURL = components.url else {
+            throw WorkoutSessionAPIError.invalidResponse
+        }
+
+        var request = URLRequest(url: requestURL)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
@@ -226,6 +247,14 @@ struct WorkoutSessionStatusPayload: Codable, Equatable {
         case completedAt = "completed_at"
         case canceledAt = "canceled_at"
         case lockVersion = "lock_version"
+    }
+}
+
+private struct WorkoutSessionListEnvelope: Decodable {
+    var workoutSessions: [WorkoutSession]
+
+    enum CodingKeys: String, CodingKey {
+        case workoutSessions = "workout_sessions"
     }
 }
 
