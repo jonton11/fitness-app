@@ -63,12 +63,14 @@ class WorkoutTemplateTest < ActiveSupport::TestCase
       is_default: true,
       starting_load_value: -5,
       next_load_value: -5,
+      calculated_next_load_value: -5,
       progression_increment: -2.5
     )
 
     assert_not option.valid?
     assert_includes option.errors[:starting_load_value], "must be greater than or equal to 0"
     assert_includes option.errors[:next_load_value], "must be greater than or equal to 0"
+    assert_includes option.errors[:calculated_next_load_value], "must be greater than or equal to 0"
     assert_includes option.errors[:progression_increment], "must be greater than or equal to 0"
   end
 

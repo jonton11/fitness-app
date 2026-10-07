@@ -300,10 +300,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
         }
 
         do {
-            let syncedSession = try await finishWorkoutSession(
-                pendingSessionCompletion.sessionID,
-                pendingSessionCompletion.payload
-            )
+            let syncedSession = try await syncPendingSessionCompletion(pendingSessionCompletion)
 
             try store.save(
                 ActiveWorkoutState(
@@ -327,6 +324,8 @@ final class ActiveWorkoutViewModel: ObservableObject {
             }
 
             errorMessage = nil
+        } catch ActiveWorkoutFinishSyncError.needsAttention {
+            errorMessage = "Workout finish sync needs attention."
         } catch {
             errorMessage = "Workout saved locally. Finish sync pending."
         }
@@ -394,6 +393,29 @@ final class ActiveWorkoutViewModel: ObservableObject {
         }
     }
 
+    private func syncPendingSessionCompletion(_ pendingCompletion: PendingWorkoutSessionCompletion) async throws -> WorkoutSession {
+        do {
+            return try await finishWorkoutSession(
+                pendingCompletion.sessionID,
+                pendingCompletion.payload
+            )
+        } catch let error as WorkoutSessionAPIError where error.isStaleConflict {
+            let refreshedSession = try await getWorkoutSession(pendingCompletion.sessionID)
+
+            guard refreshedSession.matches(pendingCompletion.payload) else {
+                throw ActiveWorkoutFinishSyncError.needsAttention
+            }
+
+            return refreshedSession
+        } catch {
+            if error.isNonRetryableSyncFailure {
+                throw ActiveWorkoutFinishSyncError.needsAttention
+            }
+
+            throw error
+        }
+    }
+
     private func prepareDraftForCurrentSet() {
         guard let currentSet else {
             repDraft = ""
@@ -427,6 +449,10 @@ private enum ActiveWorkoutValidationError: Error {
 private enum ActiveWorkoutSyncError: Error {
     case conflict(statusCode: Int)
     case setMissingFromServer
+}
+
+private enum ActiveWorkoutFinishSyncError: Error {
+    case needsAttention
 }
 
 private extension Error {
@@ -521,6 +547,11 @@ private extension WorkoutSession {
         }
 
         return updatedSession
+    }
+
+    func matches(_ payload: WorkoutSessionFinishPayload) -> Bool {
+        status == payload.status &&
+            completedAt == payload.completedAt
     }
 }
 

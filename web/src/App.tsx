@@ -1,9 +1,10 @@
 import { ExerciseLibrary } from './features/exercises/ExerciseLibrary'
+import { WorkoutHistory } from './features/workoutSessions/WorkoutHistory'
 import { WorkoutTemplates } from './features/workoutTemplates/WorkoutTemplates'
 
 import { useState } from 'react'
 
-type Section = 'workouts' | 'exercises'
+type Section = 'workouts' | 'history' | 'exercises'
 
 function App() {
   const [section, setSection] = useState<Section>('workouts')
@@ -19,6 +20,13 @@ function App() {
           Workouts
         </button>
         <button
+          className={section === 'history' ? 'selected' : ''}
+          type="button"
+          onClick={() => setSection('history')}
+        >
+          History
+        </button>
+        <button
           className={section === 'exercises' ? 'selected' : ''}
           type="button"
           onClick={() => setSection('exercises')}
@@ -26,7 +34,9 @@ function App() {
           Exercises
         </button>
       </nav>
-      {section === 'workouts' ? <WorkoutTemplates /> : <ExerciseLibrary />}
+      {section === 'workouts' ? <WorkoutTemplates /> : null}
+      {section === 'history' ? <WorkoutHistory /> : null}
+      {section === 'exercises' ? <ExerciseLibrary /> : null}
     </>
   )
 }

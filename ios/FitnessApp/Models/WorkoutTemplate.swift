@@ -74,6 +74,7 @@ struct WorkoutTemplateExerciseOption: Codable, Equatable, Identifiable {
     var isDefault: Bool
     var startingLoadValue: Double?
     var nextLoadValue: Double?
+    var calculatedNextLoadValue: Double?
     var progressionIncrement: Double?
     var createdAt: String
     var updatedAt: String
@@ -86,6 +87,7 @@ struct WorkoutTemplateExerciseOption: Codable, Equatable, Identifiable {
         case isDefault = "is_default"
         case startingLoadValue = "starting_load_value"
         case nextLoadValue = "next_load_value"
+        case calculatedNextLoadValue = "calculated_next_load_value"
         case progressionIncrement = "progression_increment"
         case createdAt = "created_at"
         case updatedAt = "updated_at"

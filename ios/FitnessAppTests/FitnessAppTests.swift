@@ -807,6 +807,92 @@ final class FitnessAppTests: XCTestCase {
     }
 
     @MainActor
+    func testActiveWorkoutRetryClearsPendingCompletionWhenServerAlreadyFinishedSession() async {
+        let session = workoutSessionFixture()
+        let completedAt = "2026-10-03T12:45:00.000Z"
+        let pendingCompletion = PendingWorkoutSessionCompletion(
+            sessionID: session.id,
+            payload: WorkoutSessionFinishPayload(
+                status: .completed,
+                completedAt: completedAt,
+                lockVersion: session.lockVersion
+            )
+        )
+        let localCompletedSession = session.finishingForTest(completedAt: completedAt)
+        var serverCompletedSession = localCompletedSession
+        serverCompletedSession.lockVersion = session.lockVersion + 1
+        let box = ActiveWorkoutStoreBox(
+            state: ActiveWorkoutState(
+                session: localCompletedSession,
+                pendingSessionCompletion: pendingCompletion
+            )
+        )
+        let viewModel = ActiveWorkoutViewModel(
+            session: session,
+            store: activeWorkoutStore(box: box),
+            getWorkoutSession: { id in
+                XCTAssertEqual(id, session.id)
+                return serverCompletedSession
+            },
+            finishWorkoutSession: { id, payload in
+                XCTAssertEqual(id, session.id)
+                XCTAssertEqual(payload, pendingCompletion.payload)
+                throw WorkoutSessionAPIError.requestFailed(statusCode: 409)
+            }
+        )
+
+        await viewModel.retryPendingSessionCompletion()
+
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(viewModel.pendingSyncCount, 0)
+        XCTAssertEqual(viewModel.session.status, .completed)
+        XCTAssertEqual(viewModel.session.lockVersion, 1)
+        XCTAssertNil(box.state)
+    }
+
+    @MainActor
+    func testActiveWorkoutRetryKeepsPendingCompletionWhenServerFinishConflicts() async {
+        let session = workoutSessionFixture()
+        let completedAt = "2026-10-03T12:45:00.000Z"
+        let pendingCompletion = PendingWorkoutSessionCompletion(
+            sessionID: session.id,
+            payload: WorkoutSessionFinishPayload(
+                status: .completed,
+                completedAt: completedAt,
+                lockVersion: session.lockVersion
+            )
+        )
+        let localCompletedSession = session.finishingForTest(completedAt: completedAt)
+        var serverCompletedSession = localCompletedSession
+        serverCompletedSession.completedAt = "2026-10-03T12:50:00.000Z"
+        serverCompletedSession.lockVersion = session.lockVersion + 1
+        let box = ActiveWorkoutStoreBox(
+            state: ActiveWorkoutState(
+                session: localCompletedSession,
+                pendingSessionCompletion: pendingCompletion
+            )
+        )
+        let viewModel = ActiveWorkoutViewModel(
+            session: session,
+            store: activeWorkoutStore(box: box),
+            getWorkoutSession: { id in
+                XCTAssertEqual(id, session.id)
+                return serverCompletedSession
+            },
+            finishWorkoutSession: { _, _ in
+                throw WorkoutSessionAPIError.requestFailed(statusCode: 409)
+            }
+        )
+
+        await viewModel.retryPendingSessionCompletion()
+
+        XCTAssertEqual(viewModel.errorMessage, "Workout finish sync needs attention.")
+        XCTAssertEqual(viewModel.pendingSyncCount, 1)
+        XCTAssertEqual(viewModel.session.completedAt, completedAt)
+        XCTAssertEqual(box.state?.pendingSessionCompletion, pendingCompletion)
+    }
+
+    @MainActor
     func testWorkoutTemplatesStartWorkoutDoesNotOverwriteExistingActiveWorkoutState() async throws {
         let existingSession = workoutSessionFixture()
         let existingSet = existingSession.exercises[0].workoutSessionSets[0]

@@ -11,8 +11,13 @@ module WorkoutSessionSets
     end
 
     def call
-      workout_session_set.assign_attributes(update_attributes)
-      workout_session_set.save!
+      WorkoutSessionSet.transaction do
+        workout_session_set.assign_attributes(update_attributes)
+        workout_session_set.save!
+        update_completed_session_exercise_status!
+        recalculate_completed_session_progression!
+      end
+
       workout_session_set.reload
     end
 
@@ -48,6 +53,29 @@ module WorkoutSessionSets
     def default_actuals!(update)
       update[:actual_load_value] = workout_session_set.planned_load_value unless update.key?(:actual_load_value)
       update[:completed_at] = completed_at unless update.key?(:completed_at)
+    end
+
+    def update_completed_session_exercise_status!
+      session_exercise = workout_session_set.workout_session_exercise
+      return unless session_exercise.workout_session.status == "completed"
+
+      session_exercise.update!(status: exercise_performed?(session_exercise) ? "completed" : "skipped")
+    end
+
+    def recalculate_completed_session_progression!
+      session_exercise = workout_session_set.workout_session_exercise
+      return unless session_exercise.workout_session.status == "completed"
+      return if session_exercise.workout_template_exercise_option.blank?
+
+      Progression::RecalculateFromHistory.call(
+        workout_template_exercise_option: session_exercise.workout_template_exercise_option
+      )
+    end
+
+    def exercise_performed?(session_exercise)
+      session_exercise.workout_session_sets.any? do |set|
+        performed?(set.completion_state)
+      end
     end
 
     def performed?(completion_state)

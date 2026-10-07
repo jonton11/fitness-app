@@ -66,7 +66,14 @@ module WorkoutSessions
     end
 
     def planned_working_load_for(option)
-      option&.starting_load_value || option&.next_load_value
+      return nil if option.blank?
+      return option.starting_load_value unless completed_history?(option)
+
+      option.next_load_value || option.calculated_next_load_value || option.starting_load_value
+    end
+
+    def completed_history?(option)
+      option.workout_session_exercises.joins(:workout_session).where(workout_sessions: { status: "completed" }).exists?
     end
 
     def planned_load_for(prescription, planned_working_load_value)

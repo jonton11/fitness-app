@@ -5,6 +5,22 @@ module Api
       rescue_from ActiveRecord::RecordInvalid, with: :render_record_invalid
       rescue_from ActiveRecord::StaleObjectError, with: :render_conflict
 
+      def index
+        sessions = WorkoutSession
+                   .includes(exercises: [ :selected_exercise, { workout_session_sets: :workout_template_set_prescription } ])
+                   .order(started_at: :desc, created_at: :desc)
+        sessions = apply_status_filter(sessions)
+        total = sessions.count
+        sessions = sessions.limit(limit).offset(offset)
+
+        render_collection(
+          :workout_sessions,
+          sessions,
+          serializer: Api::V1::WorkoutSessionSerializer,
+          meta: { limit:, offset:, total: }
+        )
+      end
+
       def create
         started_at = parsed_started_at
         return if performed?
@@ -70,6 +86,29 @@ module Api
         session_update_payload.slice(:status, :lock_version).tap do |attributes|
           attributes[:completed_at] = parsed_completed_at if session_update_payload.key?(:completed_at)
         end
+      end
+
+      def apply_status_filter(sessions)
+        status = params.fetch(:status, "completed")
+
+        case status
+        when "all"
+          sessions
+        when "active", "completed", "canceled"
+          sessions.where(status:)
+        else
+          sessions.where(status: "completed")
+        end
+      end
+
+      def limit
+        requested = params.fetch(:limit, 50).to_i
+        requested.clamp(1, 100)
+      end
+
+      def offset
+        requested = params.fetch(:offset, 0).to_i
+        [ requested, 0 ].max
       end
 
       def parsed_started_at

@@ -41,6 +41,7 @@ module Api
           is_default: option.is_default,
           starting_load_value: serialize_decimal(option.starting_load_value),
           next_load_value: serialize_decimal(option.next_load_value),
+          calculated_next_load_value: serialize_decimal(option.calculated_next_load_value),
           progression_increment: serialize_decimal(option.progression_increment),
           created_at: serialize_time(option.created_at),
           updated_at: serialize_time(option.updated_at)
