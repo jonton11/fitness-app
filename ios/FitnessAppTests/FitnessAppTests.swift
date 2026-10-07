@@ -61,7 +61,7 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertEqual(payload.slots[0].setPrescriptions[0].loadValue, 65)
     }
 
-    func testWorkoutTemplateFormPayloadPreservesSubstitutesAndAdditionalPrescriptions() throws {
+    func testWorkoutTemplateFormPayloadPreservesSubstitutesAndAdditionalPrescriptionsWhenSwitchingDefault() throws {
         let defaultExerciseID = UUID()
         let substituteExerciseID = UUID()
         let defaultOptionID = UUID()
@@ -142,11 +142,19 @@ final class FitnessAppTests: XCTestCase {
             slots: [slot]
         )
         var form = WorkoutTemplateFormState(template: template)
+        form.slots[0].defaultExerciseID = substituteExerciseID
         form.slots[0].repMin = "6"
 
         let payload = try XCTUnwrap(form.payload(lockVersion: template.lockVersion).slots.first)
 
+        XCTAssertEqual(form.slots[0].startingLoadValue, "80.0")
+        XCTAssertEqual(form.slots[0].nextLoadValue, "85.0")
+        XCTAssertEqual(form.slots[0].progressionIncrement, "10.0")
+        XCTAssertEqual(payload.defaultExerciseID, substituteExerciseID)
         XCTAssertEqual(payload.exerciseOptions.map(\.id), [defaultOptionID, substituteOptionID])
+        XCTAssertEqual(payload.exerciseOptions[0].startingLoadValue, 60)
+        XCTAssertEqual(payload.exerciseOptions[0].nextLoadValue, 65)
+        XCTAssertEqual(payload.exerciseOptions[0].progressionIncrement, 5)
         XCTAssertEqual(payload.exerciseOptions[1].exerciseID, substituteExerciseID)
         XCTAssertEqual(payload.exerciseOptions[1].startingLoadValue, 80)
         XCTAssertEqual(payload.exerciseOptions[1].nextLoadValue, 85)

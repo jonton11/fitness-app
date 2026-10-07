@@ -29,7 +29,15 @@ struct WorkoutTemplateSlotFormState: Identifiable, Equatable {
     var id: UUID?
     var lockVersion: Int?
     var label: String
-    var defaultExerciseID: UUID?
+    var defaultExerciseID: UUID? {
+        didSet {
+            guard defaultExerciseID != oldValue else {
+                return
+            }
+
+            loadProgressionDrafts(for: defaultExerciseID)
+        }
+    }
     var restSeconds: String
     var startingLoadValue: String
     var nextLoadValue: String
@@ -134,6 +142,13 @@ struct WorkoutTemplateSlotFormState: Identifiable, Equatable {
         }
 
         return optionPayloads
+    }
+
+    private mutating func loadProgressionDrafts(for exerciseID: UUID?) {
+        let option = existingExerciseOptions.first { $0.exerciseID == exerciseID }
+        startingLoadValue = option?.startingLoadValue.draftString ?? ""
+        nextLoadValue = option?.nextLoadValue.draftString ?? ""
+        progressionIncrement = option?.progressionIncrement.draftString ?? ""
     }
 
     private func setPrescriptionPayloads() -> [WorkoutTemplateSetPrescriptionPayload] {
