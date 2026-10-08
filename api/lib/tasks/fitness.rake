@@ -3,7 +3,8 @@ namespace :fitness do
   task provision_user: :environment do
     email_address = ENV.fetch("FITNESS_USER_EMAIL")
     password = ENV.fetch("FITNESS_USER_PASSWORD")
-    user = User.find_or_initialize_by(email_address:)
+    user = User.exists? ? User.sole : User.new
+    user.email_address = email_address
     user.password = password
     user.password_confirmation = password
     user.save!
