@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_08_010000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_08_020000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -62,6 +62,50 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_010000) do
     t.check_constraint "target_duration_seconds IS NULL OR target_duration_seconds > 0", name: "routine_items_target_duration_positive"
     t.check_constraint "target_mode::text = ANY (ARRAY['completion_only'::character varying, 'reps'::character varying, 'duration'::character varying, 'load_optional'::character varying]::text[])", name: "routine_items_target_mode_valid"
     t.check_constraint "target_reps IS NULL OR target_reps > 0", name: "routine_items_target_reps_positive"
+  end
+
+  create_table "routine_session_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "routine_session_id", null: false
+    t.uuid "routine_item_id"
+    t.uuid "exercise_id"
+    t.integer "position", null: false
+    t.string "exercise_name", null: false
+    t.string "target_mode", null: false
+    t.integer "sets"
+    t.integer "target_reps"
+    t.integer "target_duration_seconds"
+    t.text "notes"
+    t.datetime "completed_at"
+    t.integer "lock_version", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["exercise_id"], name: "index_routine_session_items_on_exercise_id"
+    t.index ["routine_item_id"], name: "index_routine_session_items_on_routine_item_id"
+    t.index ["routine_session_id", "position"], name: "index_routine_session_items_on_routine_session_id_and_position", unique: true
+    t.index ["routine_session_id"], name: "index_routine_session_items_on_routine_session_id"
+    t.check_constraint "\"position\" > 0", name: "routine_session_items_position_positive"
+    t.check_constraint "exercise_name::text <> ''::text", name: "routine_session_items_exercise_name_present"
+    t.check_constraint "sets IS NULL OR sets > 0", name: "routine_session_items_sets_positive"
+    t.check_constraint "target_duration_seconds IS NULL OR target_duration_seconds > 0", name: "routine_session_items_target_duration_positive"
+    t.check_constraint "target_mode::text = ANY (ARRAY['completion_only'::character varying, 'reps'::character varying, 'duration'::character varying, 'load_optional'::character varying]::text[])", name: "routine_session_items_target_mode_valid"
+    t.check_constraint "target_reps IS NULL OR target_reps > 0", name: "routine_session_items_target_reps_positive"
+  end
+
+  create_table "routine_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "routine_id"
+    t.string "routine_name", null: false
+    t.string "status", default: "active", null: false
+    t.datetime "started_at", null: false
+    t.datetime "completed_at"
+    t.integer "lock_version", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["routine_id"], name: "index_routine_sessions_on_routine_id"
+    t.index ["started_at"], name: "index_routine_sessions_on_started_at"
+    t.index ["status"], name: "index_routine_sessions_on_status"
+    t.check_constraint "routine_name::text <> ''::text", name: "routine_sessions_name_present"
+    t.check_constraint "status::text = 'active'::text AND completed_at IS NULL OR status::text = 'completed'::text AND completed_at IS NOT NULL", name: "routine_sessions_completion_matches_status"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'completed'::character varying]::text[])", name: "routine_sessions_status_valid"
   end
 
   create_table "routines", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -246,6 +290,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_010000) do
   add_foreign_key "api_tokens", "users"
   add_foreign_key "routine_items", "exercises"
   add_foreign_key "routine_items", "routines", on_delete: :cascade
+  add_foreign_key "routine_session_items", "exercises", on_delete: :nullify
+  add_foreign_key "routine_session_items", "routine_items", on_delete: :nullify
+  add_foreign_key "routine_session_items", "routine_sessions", on_delete: :cascade
+  add_foreign_key "routine_sessions", "routines", on_delete: :nullify
   add_foreign_key "sessions", "users"
   add_foreign_key "workout_session_exercises", "exercises", column: "selected_exercise_id"
   add_foreign_key "workout_session_exercises", "workout_sessions", on_delete: :cascade

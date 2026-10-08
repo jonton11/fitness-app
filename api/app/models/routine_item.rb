@@ -3,6 +3,7 @@ class RoutineItem < ApplicationRecord
 
   belongs_to :routine, inverse_of: :items
   belongs_to :exercise
+  has_many :routine_session_items, dependent: :nullify
 
   before_validation :normalize_fields
 

@@ -4,6 +4,7 @@ class Routine < ApplicationRecord
            class_name: "RoutineItem",
            dependent: :destroy,
            inverse_of: :routine
+  has_many :routine_sessions, dependent: :nullify
 
   before_validation :normalize_fields
 
