@@ -2,6 +2,8 @@ import Foundation
 
 @MainActor
 final class ConnectionSettingsViewModel: ObservableObject {
+    private static let secureServerError = "Use HTTPS, or HTTP with localhost for development."
+
     @Published var serverURL = ""
     @Published var apiToken = ""
     @Published private(set) var hasCredentials = false
@@ -32,8 +34,8 @@ final class ConnectionSettingsViewModel: ObservableObject {
         errorMessage = nil
         confirmationMessage = nil
 
-        guard let normalizedURL = normalizedServerURL() else {
-            errorMessage = "Enter a valid HTTP or HTTPS server URL."
+        guard let normalizedURL = APIConfiguration.normalizedServerURL(from: serverURL) else {
+            errorMessage = Self.secureServerError
             return
         }
 
@@ -77,24 +79,16 @@ final class ConnectionSettingsViewModel: ObservableObject {
             storedCredentials = try loadCredentials()
             if let storedCredentials {
                 serverURL = storedCredentials.serverURL.absoluteString
-                hasCredentials = !storedCredentials.token.isEmpty
+                if let normalizedURL = APIConfiguration.normalizedServerURL(from: serverURL) {
+                    self.storedCredentials?.serverURL = normalizedURL
+                    serverURL = normalizedURL.absoluteString
+                    hasCredentials = !storedCredentials.token.isEmpty
+                } else {
+                    errorMessage = Self.secureServerError
+                }
             }
         } catch {
             errorMessage = "Could not load connection settings."
         }
-    }
-
-    private func normalizedServerURL() -> URL? {
-        let value = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard var components = URLComponents(string: value),
-              let scheme = components.scheme?.lowercased(),
-              ["http", "https"].contains(scheme),
-              components.host != nil else {
-            return nil
-        }
-
-        components.scheme = scheme
-        components.path = components.path == "/" ? "" : components.path
-        return components.url
     }
 }

@@ -1969,21 +1969,54 @@ final class FitnessAppTests: XCTestCase {
     }
 
     @MainActor
-    func testConnectionSettingsRejectsInvalidServerURL() {
+    func testConnectionSettingsAllowsLocalhostHTTPForDevelopment() throws {
+        var savedCredentials: APICredentials?
+        let viewModel = ConnectionSettingsViewModel(
+            loadCredentials: { nil },
+            saveCredentials: { savedCredentials = $0 },
+            clearCredentials: {}
+        )
+        viewModel.serverURL = "HTTP://LOCALHOST:3000/"
+        viewModel.apiToken = "fitness_test_token"
+
+        viewModel.save()
+
+        let credentials = try XCTUnwrap(savedCredentials)
+        XCTAssertEqual(credentials.serverURL.absoluteString, "http://localhost:3000")
+        XCTAssertTrue(viewModel.hasCredentials)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testConnectionSettingsRejectsRemoteHTTPServer() {
         var didSave = false
         let viewModel = ConnectionSettingsViewModel(
             loadCredentials: { nil },
             saveCredentials: { _ in didSave = true },
             clearCredentials: {}
         )
-        viewModel.serverURL = "fitness.example"
+        viewModel.serverURL = "http://fitness.example"
         viewModel.apiToken = "fitness_test_token"
 
         viewModel.save()
 
         XCTAssertFalse(didSave)
         XCTAssertFalse(viewModel.hasCredentials)
-        XCTAssertEqual(viewModel.errorMessage, "Enter a valid HTTP or HTTPS server URL.")
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Use HTTPS, or HTTP with localhost for development."
+        )
+    }
+
+    func testAPIConfigurationRejectsBearerTokenOverRemoteHTTP() {
+        let configuration = APIConfiguration(
+            baseURL: URL(string: "http://fitness.example")!,
+            bearerToken: "fitness_test_token"
+        )
+
+        XCTAssertThrowsError(try configuration.makeRequest(path: "/api/v1/exercises")) { error in
+            XCTAssertEqual(error as? APIConfigurationError, .insecureServerURL)
+        }
     }
 
     private func activeWorkoutStore(box: ActiveWorkoutStoreBox) -> ActiveWorkoutStore {
