@@ -51,9 +51,9 @@ cd api
 FITNESS_USER_EMAIL=owner@example.com FITNESS_API_TOKEN_NAME='Jonathan iPhone' asdf exec bundle exec rails fitness:issue_api_token
 ```
 
-The token is shown once and Rails stores only its SHA-256 digest. Issuing another
-token with the same name rotates that device's credential and immediately
-invalidates the old token.
+The token is shown once and Rails stores only its SHA-256 digest. The iOS client
+stores it in Keychain. Issuing another token with the same name rotates that
+device's credential and immediately invalidates the old token.
 
 With Docker:
 
