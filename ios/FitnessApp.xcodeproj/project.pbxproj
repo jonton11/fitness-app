@@ -37,6 +37,12 @@
 		0A000001000000000000002C /* APICredentialsStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A000002000000000000002C /* APICredentialsStorage.swift */; };
 		0A000001000000000000002D /* ConnectionSettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A000002000000000000002D /* ConnectionSettingsViewModel.swift */; };
 		0A000001000000000000002E /* ConnectionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A000002000000000000002E /* ConnectionSettingsView.swift */; };
+		0A0000010000000000000030 /* Routine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000030 /* Routine.swift */; };
+		0A0000010000000000000031 /* RoutineAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000031 /* RoutineAPIClient.swift */; };
+		0A0000010000000000000032 /* RoutinesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000032 /* RoutinesViewModel.swift */; };
+		0A0000010000000000000033 /* RoutinesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000033 /* RoutinesView.swift */; };
+		0A0000010000000000000034 /* RoutineHistoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000034 /* RoutineHistoryViewModel.swift */; };
+		0A0000010000000000000035 /* RoutineHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000035 /* RoutineHistoryView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -82,6 +88,12 @@
 		0A000002000000000000002C /* APICredentialsStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APICredentialsStorage.swift; sourceTree = "<group>"; };
 		0A000002000000000000002D /* ConnectionSettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionSettingsViewModel.swift; sourceTree = "<group>"; };
 		0A000002000000000000002E /* ConnectionSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionSettingsView.swift; sourceTree = "<group>"; };
+		0A0000020000000000000030 /* Routine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Routine.swift; sourceTree = "<group>"; };
+		0A0000020000000000000031 /* RoutineAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineAPIClient.swift; sourceTree = "<group>"; };
+		0A0000020000000000000032 /* RoutinesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutinesViewModel.swift; sourceTree = "<group>"; };
+		0A0000020000000000000033 /* RoutinesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutinesView.swift; sourceTree = "<group>"; };
+		0A0000020000000000000034 /* RoutineHistoryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineHistoryViewModel.swift; sourceTree = "<group>"; };
+		0A0000020000000000000035 /* RoutineHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineHistoryView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -144,6 +156,7 @@
 			isa = PBXGroup;
 			children = (
 				0A0000020000000000000010 /* Exercise.swift */,
+				0A0000020000000000000030 /* Routine.swift */,
 				0A0000020000000000000016 /* WorkoutTemplate.swift */,
 				0A0000020000000000000020 /* WorkoutSession.swift */,
 			);
@@ -164,6 +177,7 @@
 			children = (
 				0A000002000000000000002B /* APIConfiguration.swift */,
 				0A0000020000000000000011 /* ExerciseAPIClient.swift */,
+				0A0000020000000000000031 /* RoutineAPIClient.swift */,
 				0A0000020000000000000017 /* WorkoutTemplateAPIClient.swift */,
 				0A0000020000000000000021 /* WorkoutSessionAPIClient.swift */,
 			);
@@ -186,6 +200,7 @@
 			children = (
 				0A0000070000000000000014 /* Exercises */,
 				0A0000070000000000000015 /* WorkoutTemplates */,
+				0A000007000000000000001A /* Routines */,
 				0A0000070000000000000017 /* ActiveWorkout */,
 				0A0000070000000000000018 /* History */,
 				0A0000070000000000000019 /* Settings */,
@@ -242,6 +257,17 @@
 				0A000002000000000000002E /* ConnectionSettingsView.swift */,
 			);
 			path = Settings;
+			sourceTree = "<group>";
+		};
+		0A000007000000000000001A /* Routines */ = {
+			isa = PBXGroup;
+			children = (
+				0A0000020000000000000032 /* RoutinesViewModel.swift */,
+				0A0000020000000000000033 /* RoutinesView.swift */,
+				0A0000020000000000000034 /* RoutineHistoryViewModel.swift */,
+				0A0000020000000000000035 /* RoutineHistoryView.swift */,
+			);
+			path = Routines;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -371,6 +397,12 @@
 				0A000001000000000000002C /* APICredentialsStorage.swift in Sources */,
 				0A000001000000000000002D /* ConnectionSettingsViewModel.swift in Sources */,
 				0A000001000000000000002E /* ConnectionSettingsView.swift in Sources */,
+				0A0000010000000000000030 /* Routine.swift in Sources */,
+				0A0000010000000000000031 /* RoutineAPIClient.swift in Sources */,
+				0A0000010000000000000032 /* RoutinesViewModel.swift in Sources */,
+				0A0000010000000000000033 /* RoutinesView.swift in Sources */,
+				0A0000010000000000000034 /* RoutineHistoryViewModel.swift in Sources */,
+				0A0000010000000000000035 /* RoutineHistoryView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
