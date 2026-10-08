@@ -5,6 +5,9 @@ Rails.application.routes.draw do
     namespace :v1 do
       resource :session, only: %i[show create destroy]
       resources :exercises, only: %i[index show create update]
+      resources :routines, only: %i[index show create update]
+      resources :routine_sessions, only: %i[index show create update]
+      resources :routine_session_items, only: %i[update]
       resources :workout_templates, only: %i[index show create update]
       resources :workout_template_exercise_options, only: %i[create]
       resources :workout_sessions, only: %i[index create show update]
