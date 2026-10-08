@@ -9,6 +9,29 @@ struct WorkoutSessionAPIClient {
         session: .shared
     )
 
+    func listWorkoutSessions(
+        status: WorkoutSessionStatus = .completed,
+        limit: Int = 50,
+        offset: Int = 0
+    ) async throws -> WorkoutSessionPage {
+        let envelope: WorkoutSessionListEnvelope = try await request(
+            path: "/api/v1/workout_sessions",
+            method: "GET",
+            queryItems: [
+                URLQueryItem(name: "status", value: status.rawValue),
+                URLQueryItem(name: "limit", value: String(limit)),
+                URLQueryItem(name: "offset", value: String(offset))
+            ]
+        )
+
+        return WorkoutSessionPage(
+            sessions: envelope.workoutSessions,
+            limit: envelope.meta.limit,
+            offset: envelope.meta.offset,
+            total: envelope.meta.total
+        )
+    }
+
     func startWorkoutSession(templateID: UUID, startedAt: String? = nil) async throws -> WorkoutSession {
         let envelope: WorkoutSessionEnvelope = try await request(
             path: "/api/v1/workout_sessions",
@@ -79,9 +102,20 @@ struct WorkoutSessionAPIClient {
     private func request<Response: Decodable, Body: Encodable>(
         path: String,
         method: String,
+        queryItems: [URLQueryItem] = [],
         body: Body? = Optional<String>.none
     ) async throws -> Response {
-        var request = URLRequest(url: baseURL.appending(path: path))
+        let url = baseURL.appending(path: path)
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            throw WorkoutSessionAPIError.invalidResponse
+        }
+        components.queryItems = queryItems.isEmpty ? nil : queryItems
+
+        guard let requestURL = components.url else {
+            throw WorkoutSessionAPIError.invalidResponse
+        }
+
+        var request = URLRequest(url: requestURL)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
@@ -107,6 +141,21 @@ struct WorkoutSessionAPIClient {
 enum WorkoutSessionAPIError: Error, Equatable {
     case invalidResponse
     case requestFailed(statusCode: Int)
+}
+
+struct WorkoutSessionPage: Equatable {
+    var sessions: [WorkoutSession]
+    var limit: Int
+    var offset: Int
+    var total: Int
+
+    var nextOffset: Int {
+        offset + sessions.count
+    }
+
+    var hasNextPage: Bool {
+        !sessions.isEmpty && nextOffset < total
+    }
 }
 
 struct WorkoutSessionStartPayload: Codable, Equatable {
@@ -227,6 +276,22 @@ struct WorkoutSessionStatusPayload: Codable, Equatable {
         case canceledAt = "canceled_at"
         case lockVersion = "lock_version"
     }
+}
+
+private struct WorkoutSessionListEnvelope: Decodable {
+    var workoutSessions: [WorkoutSession]
+    var meta: PaginationMeta
+
+    enum CodingKeys: String, CodingKey {
+        case workoutSessions = "workout_sessions"
+        case meta
+    }
+}
+
+private struct PaginationMeta: Decodable {
+    var limit: Int
+    var offset: Int
+    var total: Int
 }
 
 private struct WorkoutSessionEnvelope: Decodable {

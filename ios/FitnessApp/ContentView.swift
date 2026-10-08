@@ -29,6 +29,11 @@ struct ContentView: View {
                     Label("Workouts", systemImage: "figure.strengthtraining.traditional")
                 }
 
+            WorkoutHistoryView()
+                .tabItem {
+                    Label("History", systemImage: "clock.arrow.circlepath")
+                }
+
             ExercisesView()
                 .tabItem {
                     Label("Exercises", systemImage: "list.bullet.rectangle")

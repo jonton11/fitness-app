@@ -213,6 +213,63 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertEqual(session.workoutTemplateID, templateID)
     }
 
+    func testWorkoutSessionAPIClientListsCompletedSessionsWithRailsEnvelope() async throws {
+        let requestBox = URLRequestBox()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolStub.self]
+        let apiClient = WorkoutSessionAPIClient(
+            baseURL: URL(string: "https://fitness.example")!,
+            session: URLSession(configuration: configuration)
+        )
+        var completedSession = workoutSessionFixture()
+        completedSession.status = .completed
+        completedSession.completedAt = "2026-10-03T12:30:00.000Z"
+
+        URLProtocolStub.requestHandler = { request in
+            requestBox.request = request
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            let responseData = try JSONSerialization.data(withJSONObject: [
+                "workout_sessions": try JSONSerialization.jsonObject(
+                    with: JSONEncoder().encode([completedSession])
+                ),
+                "meta": ["limit": 25, "offset": 50, "total": 76]
+            ])
+
+            return (response, responseData)
+        }
+        defer {
+            URLProtocolStub.requestHandler = nil
+        }
+
+        let page = try await apiClient.listWorkoutSessions(limit: 25, offset: 50)
+
+        let request = try XCTUnwrap(requestBox.request)
+        let queryItems = try XCTUnwrap(
+            URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+        )
+
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.url?.path, "/api/v1/workout_sessions")
+        XCTAssertEqual(
+            queryItems,
+            [
+                URLQueryItem(name: "status", value: "completed"),
+                URLQueryItem(name: "limit", value: "25"),
+                URLQueryItem(name: "offset", value: "50")
+            ]
+        )
+        XCTAssertEqual(page.sessions, [completedSession])
+        XCTAssertEqual(page.limit, 25)
+        XCTAssertEqual(page.offset, 50)
+        XCTAssertEqual(page.total, 76)
+        XCTAssertTrue(page.hasNextPage)
+    }
+
     func testWorkoutSessionAPIClientCreatesClientSnapshotWithRailsEnvelope() async throws {
         let draft = try WorkoutSessionDraft(
             template: offlineWorkoutTemplateFixture(),
@@ -720,6 +777,177 @@ final class FitnessAppTests: XCTestCase {
         } catch let error as WorkoutSessionAPIError {
             XCTAssertEqual(error, .requestFailed(statusCode: 409))
         }
+    }
+
+    @MainActor
+    func testWorkoutHistoryCombinesPendingLocalCompletionWithServerHistory() async {
+        var pendingSession = workoutSessionFixture()
+        pendingSession.status = .completed
+        pendingSession.completedAt = "2026-10-03T12:30:00.000Z"
+        pendingSession.exercises[0].workoutSessionSets[0].actualReps = 8
+        pendingSession.exercises[0].workoutSessionSets[0].actualLoadValue = 65
+        pendingSession.exercises[0].workoutSessionSets[0].completionState = .completed
+        let pendingUpdate = PendingWorkoutSessionUpdate(
+            sessionID: pendingSession.id,
+            payload: WorkoutSessionStatusPayload(
+                status: .completed,
+                completedAt: pendingSession.completedAt,
+                lockVersion: pendingSession.lockVersion
+            )
+        )
+        let box = ActiveWorkoutStoreBox(
+            state: ActiveWorkoutState(
+                session: pendingSession,
+                pendingSessionUpdate: pendingUpdate
+            )
+        )
+        var staleServerCopy = pendingSession
+        staleServerCopy.exercises[0].workoutSessionSets[0].actualReps = nil
+        staleServerCopy.exercises[0].workoutSessionSets[0].actualLoadValue = nil
+        staleServerCopy.exercises[0].workoutSessionSets[0].completionState = .pending
+        var olderServerSession = workoutSessionFixture()
+        olderServerSession.status = .completed
+        olderServerSession.startedAt = "2026-10-02T12:00:00.000Z"
+        olderServerSession.completedAt = "2026-10-02T12:30:00.000Z"
+        let viewModel = WorkoutHistoryViewModel(
+            activeWorkoutStore: activeWorkoutStore(box: box),
+            listWorkoutSessions: { _ in
+                WorkoutSessionPage(
+                    sessions: [staleServerCopy, olderServerSession],
+                    limit: 50,
+                    offset: 0,
+                    total: 2
+                )
+            }
+        )
+
+        await viewModel.load()
+
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(viewModel.entries.count, 2)
+        XCTAssertEqual(viewModel.entries[0].id, pendingSession.id)
+        XCTAssertEqual(viewModel.entries[0].syncState, .pending)
+        XCTAssertEqual(
+            viewModel.entries[0].session.exercises[0].workoutSessionSets[0].actualReps,
+            8
+        )
+        XCTAssertEqual(viewModel.entries[1].id, olderServerSession.id)
+        XCTAssertNil(viewModel.entries[1].syncState)
+    }
+
+    @MainActor
+    func testWorkoutHistoryKeepsLocalCompletionWhenRefreshFails() async {
+        var pendingSession = workoutSessionFixture()
+        pendingSession.status = .completed
+        pendingSession.completedAt = "2026-10-03T12:30:00.000Z"
+        let failedSet = pendingSession.exercises[0].workoutSessionSets[0]
+        let payload = WorkoutSessionSetUpdatePayload(
+            actualReps: 4,
+            actualLoadValue: 65,
+            completionState: .attemptedButTargetNotMet,
+            completedAt: pendingSession.completedAt,
+            lockVersion: failedSet.lockVersion
+        )
+        let box = ActiveWorkoutStoreBox(
+            state: ActiveWorkoutState(
+                session: pendingSession,
+                syncIssues: [
+                    WorkoutSessionSetSyncIssue(
+                        setID: failedSet.id,
+                        payload: payload,
+                        statusCode: 409
+                    )
+                ]
+            )
+        )
+        let viewModel = WorkoutHistoryViewModel(
+            activeWorkoutStore: activeWorkoutStore(box: box),
+            listWorkoutSessions: { _ in throw URLError(.notConnectedToInternet) }
+        )
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.entries.count, 1)
+        XCTAssertEqual(viewModel.entries[0].session, pendingSession)
+        XCTAssertEqual(viewModel.entries[0].syncState, .needsAttention)
+        XCTAssertEqual(viewModel.errorMessage, "Could not refresh workout history.")
+    }
+
+    @MainActor
+    func testWorkoutHistoryLoadsSubsequentPages() async {
+        var newerSession = workoutSessionFixture()
+        newerSession.status = .completed
+        newerSession.startedAt = "2026-10-03T12:00:00.000Z"
+        var olderSession = workoutSessionFixture(id: UUID())
+        olderSession.status = .completed
+        olderSession.startedAt = "2026-10-02T12:00:00.000Z"
+        var requestedOffsets: [Int] = []
+        let viewModel = WorkoutHistoryViewModel(
+            activeWorkoutStore: activeWorkoutStore(box: ActiveWorkoutStoreBox(state: nil)),
+            listWorkoutSessions: { offset in
+                requestedOffsets.append(offset)
+                if offset == 0 {
+                    return WorkoutSessionPage(
+                        sessions: [newerSession],
+                        limit: 1,
+                        offset: 0,
+                        total: 2
+                    )
+                }
+
+                return WorkoutSessionPage(
+                    sessions: [olderSession],
+                    limit: 1,
+                    offset: 1,
+                    total: 2
+                )
+            }
+        )
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.entries.map(\.id), [newerSession.id])
+        XCTAssertTrue(viewModel.canLoadMore)
+
+        await viewModel.loadMore()
+
+        XCTAssertEqual(requestedOffsets, [0, 1])
+        XCTAssertEqual(viewModel.entries.map(\.id), [newerSession.id, olderSession.id])
+        XCTAssertFalse(viewModel.canLoadMore)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testWorkoutHistoryKeepsLoadedPageWhenLocalStoreFails() async {
+        var newerSession = workoutSessionFixture()
+        newerSession.status = .completed
+        newerSession.startedAt = "2026-10-03T12:00:00.000Z"
+        var olderSession = workoutSessionFixture(id: UUID())
+        olderSession.status = .completed
+        olderSession.startedAt = "2026-10-02T12:00:00.000Z"
+        let failingStore = ActiveWorkoutStore(
+            load: { throw ActiveWorkoutStoreFailure.failed },
+            save: { _ in },
+            clear: {}
+        )
+        let viewModel = WorkoutHistoryViewModel(
+            activeWorkoutStore: failingStore,
+            listWorkoutSessions: { offset in
+                WorkoutSessionPage(
+                    sessions: offset == 0 ? [newerSession] : [olderSession],
+                    limit: 1,
+                    offset: offset,
+                    total: 2
+                )
+            }
+        )
+
+        await viewModel.load()
+        await viewModel.loadMore()
+
+        XCTAssertEqual(viewModel.entries.map(\.id), [newerSession.id, olderSession.id])
+        XCTAssertFalse(viewModel.canLoadMore)
+        XCTAssertEqual(viewModel.errorMessage, "Could not load the workout awaiting sync.")
     }
 
     @MainActor
@@ -1701,8 +1929,10 @@ final class FitnessAppTests: XCTestCase {
         )
     }
 
-    private func workoutSessionFixture(templateID: UUID = UUID()) -> WorkoutSession {
-        let sessionID = UUID()
+    private func workoutSessionFixture(
+        id sessionID: UUID = UUID(),
+        templateID: UUID = UUID()
+    ) -> WorkoutSession {
         let exerciseID = UUID()
         let exerciseRowID = UUID()
 
