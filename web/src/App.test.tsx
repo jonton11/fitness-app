@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
 import type { Exercise } from './api/exercises'
+import type { Routine } from './api/routines'
 import type { User } from './api/session'
 import type { WorkoutSession } from './api/workoutSessions'
 import type { WorkoutTemplate } from './api/workoutTemplates'
@@ -55,6 +56,44 @@ const upperTemplate: WorkoutTemplate = {
   updated_at: '2026-10-01T00:00:00.000Z',
   lock_version: 0,
   slots: [],
+}
+
+const dailyRehab: Routine = {
+  id: 'routine-1',
+  name: 'Daily Rehab',
+  notes: 'Move slowly.',
+  archived_at: null,
+  created_at: '2026-10-01T00:00:00.000Z',
+  updated_at: '2026-10-01T00:00:00.000Z',
+  lock_version: 0,
+  items: [
+    {
+      id: 'routine-item-1',
+      position: 1,
+      exercise_id: deadBug.id,
+      exercise: deadBug,
+      target_mode: 'reps',
+      sets: 3,
+      target_reps: 8,
+      target_duration_seconds: null,
+      notes_override: 'Each side',
+      created_at: '2026-10-01T00:00:00.000Z',
+      updated_at: '2026-10-01T00:00:00.000Z',
+    },
+    {
+      id: 'routine-item-2',
+      position: 2,
+      exercise_id: inclinePress.id,
+      exercise: inclinePress,
+      target_mode: 'completion_only',
+      sets: null,
+      target_reps: null,
+      target_duration_seconds: null,
+      notes_override: null,
+      created_at: '2026-10-01T00:00:00.000Z',
+      updated_at: '2026-10-01T00:00:00.000Z',
+    },
+  ],
 }
 
 const completedSession: WorkoutSession = {
@@ -610,6 +649,148 @@ describe('App', () => {
       },
     ])
   })
+
+  it('loads routines for authoring', async () => {
+    mockJsonResponse({ workout_templates: [], meta: {} })
+    mockJsonResponse({ exercises: [], meta: {} })
+    mockJsonResponse({ routines: [dailyRehab], meta: {} })
+    mockJsonResponse({ exercises: [inclinePress, deadBug], meta: {} })
+
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Routines' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Routines' }),
+    ).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: /Daily Rehab/ }))
+
+    expect(screen.getByDisplayValue('Move slowly.')).toBeInTheDocument()
+    expect(screen.getByText('1. Dead Bug')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Each side')).toBeInTheDocument()
+  })
+
+  it('creates a routine with exercise targets', async () => {
+    const savedRoutine = {
+      ...dailyRehab,
+      id: 'routine-2',
+      name: 'Core Reset',
+      notes: null,
+      items: [dailyRehab.items[0]],
+    } satisfies Routine
+
+    mockJsonResponse({ workout_templates: [], meta: {} })
+    mockJsonResponse({ exercises: [], meta: {} })
+    mockJsonResponse({ routines: [], meta: {} })
+    mockJsonResponse({ exercises: [inclinePress, deadBug], meta: {} })
+    mockJsonResponse({ routine: savedRoutine }, 201)
+
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Routines' }))
+    fireEvent.change(await screen.findByLabelText('Name'), {
+      target: { value: 'Core Reset' },
+    })
+    fireEvent.change(screen.getByLabelText('Add routine exercise'), {
+      target: { value: deadBug.id },
+    })
+    fireEvent.change(screen.getByLabelText('Item 1 target mode'), {
+      target: { value: 'reps' },
+    })
+    fireEvent.change(screen.getByLabelText('Item 1 sets'), {
+      target: { value: '3' },
+    })
+    fireEvent.change(screen.getByLabelText('Item 1 target reps'), {
+      target: { value: '8' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(6)
+    })
+    expect(fetch).toHaveBeenLastCalledWith(
+      '/api/v1/routines',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(lastRoutineRequest()).toMatchObject({
+      name: 'Core Reset',
+      notes: null,
+      items: [
+        {
+          position: 1,
+          exercise_id: deadBug.id,
+          target_mode: 'reps',
+          sets: 3,
+          target_reps: 8,
+        },
+      ],
+    })
+  })
+
+  it('persists reordered routine items', async () => {
+    const reorderedRoutine = {
+      ...dailyRehab,
+      lock_version: 1,
+      items: [dailyRehab.items[1], dailyRehab.items[0]],
+    } satisfies Routine
+
+    mockJsonResponse({ workout_templates: [], meta: {} })
+    mockJsonResponse({ exercises: [], meta: {} })
+    mockJsonResponse({ routines: [dailyRehab], meta: {} })
+    mockJsonResponse({ exercises: [inclinePress, deadBug], meta: {} })
+    mockJsonResponse({ routine: reorderedRoutine })
+
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Routines' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Daily Rehab/ }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Move Down' })[0])
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(6)
+    })
+    expect(fetch).toHaveBeenLastCalledWith(
+      `/api/v1/routines/${dailyRehab.id}`,
+      expect.objectContaining({ method: 'PATCH' }),
+    )
+    expect(lastRoutineRequest()).toMatchObject({
+      lock_version: 0,
+      items: [
+        { id: 'routine-item-2', position: 1 },
+        { id: 'routine-item-1', position: 2 },
+      ],
+    })
+  })
+
+  it('archives a routine', async () => {
+    const archivedRoutine = {
+      ...dailyRehab,
+      archived_at: '2026-10-07T00:00:00.000Z',
+      lock_version: 1,
+    } satisfies Routine
+
+    mockJsonResponse({ workout_templates: [], meta: {} })
+    mockJsonResponse({ exercises: [], meta: {} })
+    mockJsonResponse({ routines: [dailyRehab], meta: {} })
+    mockJsonResponse({ exercises: [inclinePress, deadBug], meta: {} })
+    mockJsonResponse({ routine: archivedRoutine })
+
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Routines' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Daily Rehab/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }))
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(6)
+    })
+    expect(lastRoutineRequest()).toMatchObject({
+      archived_at: expect.any(String),
+      lock_version: 0,
+    })
+    expect(await screen.findByText('No routines found.')).toBeInTheDocument()
+  })
 })
 
 function mockJsonResponse(body: unknown, status = 200) {
@@ -656,6 +837,16 @@ function lastWorkoutTemplateRequest() {
   }
 
   return body.workout_template
+}
+
+function lastRoutineRequest() {
+  const lastCall = vi.mocked(fetch).mock.calls.at(-1)
+  const init = lastCall?.[1] as RequestInit | undefined
+  const body = JSON.parse(init?.body as string) as {
+    routine: Record<string, unknown>
+  }
+
+  return body.routine
 }
 
 function lastWorkoutSessionSetRequest() {

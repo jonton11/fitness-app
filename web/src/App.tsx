@@ -1,5 +1,6 @@
 import { ExerciseLibrary } from './features/exercises/ExerciseLibrary'
 import { Login } from './features/auth/Login'
+import { RoutineManager } from './features/routines/RoutineManager'
 import { WorkoutHistory } from './features/workoutSessions/WorkoutHistory'
 import { WorkoutTemplates } from './features/workoutTemplates/WorkoutTemplates'
 
@@ -11,7 +12,7 @@ import {
   type User,
 } from './api/session'
 
-type Section = 'workouts' | 'history' | 'exercises'
+type Section = 'workouts' | 'routines' | 'history' | 'exercises'
 
 type AuthenticationState =
   | { status: 'loading' }
@@ -94,6 +95,13 @@ function App() {
             Workouts
           </button>
           <button
+            className={section === 'routines' ? 'selected' : ''}
+            type="button"
+            onClick={() => setSection('routines')}
+          >
+            Routines
+          </button>
+          <button
             className={section === 'history' ? 'selected' : ''}
             type="button"
             onClick={() => setSection('history')}
@@ -121,6 +129,7 @@ function App() {
         </div>
       ) : null}
       {section === 'workouts' ? <WorkoutTemplates /> : null}
+      {section === 'routines' ? <RoutineManager /> : null}
       {section === 'history' ? <WorkoutHistory /> : null}
       {section === 'exercises' ? <ExerciseLibrary /> : null}
     </>

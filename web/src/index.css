@@ -453,6 +453,30 @@ h2 {
   margin-top: 18px;
 }
 
+.routine-item-editor {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.routine-exercise-picker {
+  width: min(240px, 100%);
+}
+
+.routine-target-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.routine-target-grid .field-label {
+  margin: 0;
+}
+
+.routine-target-grid .text-input {
+  margin-top: 6px;
+}
+
 .section-heading,
 .slot-card-header {
   display: flex;
@@ -641,6 +665,7 @@ h2 {
   .library-list,
   .editor-panel,
   .exercise-row,
+  .slot-card,
   .session-summary-grid div,
   .set-result-row,
   .set-edit-form,
@@ -663,6 +688,8 @@ h2 {
 
   h1,
   h2,
+  .section-heading h3,
+  .slot-card-header h4,
   .compact-heading h3,
   .exercise-row strong,
   .session-summary-grid strong,
@@ -759,6 +786,7 @@ h2 {
   }
 
   .slot-grid,
+  .routine-target-grid,
   .set-prescription-row,
   .set-result-row,
   .set-edit-form {
@@ -772,5 +800,22 @@ h2 {
   .library-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 520px) {
+  .routine-item-editor .section-heading,
+  .routine-item-editor .slot-card-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .routine-exercise-picker {
+    width: 100%;
+  }
+
+  .routine-item-editor .inline-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
