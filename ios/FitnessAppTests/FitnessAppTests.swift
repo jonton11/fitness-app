@@ -918,6 +918,39 @@ final class FitnessAppTests: XCTestCase {
     }
 
     @MainActor
+    func testWorkoutHistoryKeepsLoadedPageWhenLocalStoreFails() async {
+        var newerSession = workoutSessionFixture()
+        newerSession.status = .completed
+        newerSession.startedAt = "2026-10-03T12:00:00.000Z"
+        var olderSession = workoutSessionFixture(id: UUID())
+        olderSession.status = .completed
+        olderSession.startedAt = "2026-10-02T12:00:00.000Z"
+        let failingStore = ActiveWorkoutStore(
+            load: { throw ActiveWorkoutStoreFailure.failed },
+            save: { _ in },
+            clear: {}
+        )
+        let viewModel = WorkoutHistoryViewModel(
+            activeWorkoutStore: failingStore,
+            listWorkoutSessions: { offset in
+                WorkoutSessionPage(
+                    sessions: offset == 0 ? [newerSession] : [olderSession],
+                    limit: 1,
+                    offset: offset,
+                    total: 2
+                )
+            }
+        )
+
+        await viewModel.load()
+        await viewModel.loadMore()
+
+        XCTAssertEqual(viewModel.entries.map(\.id), [newerSession.id, olderSession.id])
+        XCTAssertFalse(viewModel.canLoadMore)
+        XCTAssertEqual(viewModel.errorMessage, "Could not load the workout awaiting sync.")
+    }
+
+    @MainActor
     func testActiveWorkoutSaveSetDefaultsLoadPersistsLocallyAndMergesServerSet() async {
         let box = ActiveWorkoutStoreBox(state: nil)
         let store = activeWorkoutStore(box: box)

@@ -79,15 +79,27 @@ final class WorkoutHistoryViewModel: ObservableObject {
             isLoadingMore = false
         }
 
+        let page: WorkoutSessionPage
         do {
-            let page = try await listWorkoutSessions(nextOffset)
-            appendServerSessions(page.sessions)
-            applyPagination(page)
-            entries = merge(localEntry: try pendingLocalEntry(), serverSessions: serverSessions)
-            errorMessage = nil
+            page = try await listWorkoutSessions(nextOffset)
         } catch {
             errorMessage = "Could not load more workout history."
+            return
         }
+
+        appendServerSessions(page.sessions)
+        applyPagination(page)
+
+        let localEntry: WorkoutHistoryEntry?
+        do {
+            localEntry = try pendingLocalEntry()
+            errorMessage = nil
+        } catch {
+            localEntry = nil
+            errorMessage = "Could not load the workout awaiting sync."
+        }
+
+        entries = merge(localEntry: localEntry, serverSessions: serverSessions)
     }
 
     private func pendingLocalEntry() throws -> WorkoutHistoryEntry? {
