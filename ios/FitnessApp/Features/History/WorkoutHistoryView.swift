@@ -11,6 +11,25 @@ struct WorkoutHistoryView: View {
                         .foregroundStyle(.red)
                 }
 
+                Section {
+                    NavigationLink {
+                        RoutineHistoryView()
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Routine History")
+                                    .font(.headline)
+                                Text("Completed mobility and rehab checklists")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "checklist.checked")
+                                .foregroundStyle(.blue)
+                        }
+                    }
+                }
+
                 ForEach(viewModel.entries) { entry in
                     NavigationLink {
                         WorkoutHistoryDetailView(entry: entry)

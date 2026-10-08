@@ -2273,6 +2273,187 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertTrue(page.hasNextPage)
     }
 
+    @MainActor
+    func testRoutinesLoadAvailableAndActiveSessions() async {
+        let routine = routineFixture()
+        let activeSession = routineSessionFixture(routineID: routine.id)
+        let viewModel = RoutinesViewModel(
+            listRoutines: { [routine] },
+            listActiveSessions: {
+                RoutineSessionPage(
+                    sessions: [activeSession],
+                    limit: 50,
+                    offset: 0,
+                    total: 1
+                )
+            },
+            startRoutineSession: { _ in throw RoutineAPIError.invalidResponse },
+            updateRoutineSessionItem: { _, _ in throw RoutineAPIError.invalidResponse },
+            completeRoutineSession: { _, _ in throw RoutineAPIError.invalidResponse }
+        )
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.routines, [routine])
+        XCTAssertEqual(viewModel.activeSessions, [activeSession])
+        XCTAssertFalse(viewModel.isLoading)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testRoutinesStartBuildsStableSessionSnapshotIdentifiers() async throws {
+        let routineID = UUID()
+        let routineItemID = UUID()
+        let routine = routineFixture(id: routineID, itemID: routineItemID)
+        let sessionID = UUID()
+        let sessionItemID = UUID()
+        var identifiers = [sessionID, sessionItemID]
+        var capturedPayload: RoutineSessionStartPayload?
+        let viewModel = RoutinesViewModel(
+            listRoutines: { [] },
+            listActiveSessions: {
+                RoutineSessionPage(sessions: [], limit: 50, offset: 0, total: 0)
+            },
+            startRoutineSession: { payload in
+                capturedPayload = payload
+                return self.routineSessionFixture(
+                    id: payload.id,
+                    routineID: payload.routineID,
+                    itemID: payload.items[0].id,
+                    routineItemID: payload.items[0].routineItemID
+                )
+            },
+            updateRoutineSessionItem: { _, _ in throw RoutineAPIError.invalidResponse },
+            completeRoutineSession: { _, _ in throw RoutineAPIError.invalidResponse },
+            now: { Date(timeIntervalSince1970: 0) },
+            makeID: { identifiers.removeFirst() }
+        )
+
+        let session = await viewModel.start(routine: routine)
+        let payload = try XCTUnwrap(capturedPayload)
+
+        XCTAssertEqual(payload.id, sessionID)
+        XCTAssertEqual(payload.routineID, routineID)
+        XCTAssertEqual(payload.startedAt, "1970-01-01T00:00:00.000Z")
+        XCTAssertEqual(payload.items[0].id, sessionItemID)
+        XCTAssertEqual(payload.items[0].routineItemID, routineItemID)
+        XCTAssertEqual(session?.id, sessionID)
+        XCTAssertEqual(viewModel.activeSessions.map(\.id), [sessionID])
+    }
+
+    @MainActor
+    func testRoutinesToggleMergesServerChecklistItem() async throws {
+        let activeSession = routineSessionFixture()
+        let item = try XCTUnwrap(activeSession.items.first)
+        var capturedPayload: RoutineSessionItemUpdatePayload?
+        var completedItem = item
+        completedItem.completedAt = "2026-10-07T12:05:00.000Z"
+        completedItem.lockVersion = 1
+        let viewModel = RoutinesViewModel(
+            listRoutines: { [] },
+            listActiveSessions: {
+                RoutineSessionPage(
+                    sessions: [activeSession],
+                    limit: 50,
+                    offset: 0,
+                    total: 1
+                )
+            },
+            startRoutineSession: { _ in throw RoutineAPIError.invalidResponse },
+            updateRoutineSessionItem: { id, payload in
+                XCTAssertEqual(id, item.id)
+                capturedPayload = payload
+                return completedItem
+            },
+            completeRoutineSession: { _, _ in throw RoutineAPIError.invalidResponse },
+            now: { Date(timeIntervalSince1970: 0) }
+        )
+        await viewModel.load()
+
+        await viewModel.toggle(itemID: item.id, in: activeSession.id)
+        let payload = try XCTUnwrap(capturedPayload)
+
+        XCTAssertTrue(payload.completed)
+        XCTAssertEqual(payload.completedAt, "1970-01-01T00:00:00.000Z")
+        XCTAssertEqual(payload.lockVersion, 0)
+        XCTAssertEqual(viewModel.activeSessions[0].items[0], completedItem)
+        XCTAssertTrue(viewModel.updatingItemIDs.isEmpty)
+    }
+
+    @MainActor
+    func testRoutinesCompleteCheckedSessionAndRemoveItFromActiveList() async throws {
+        var activeSession = routineSessionFixture()
+        activeSession.items[0].completedAt = "2026-10-07T12:05:00.000Z"
+        activeSession.items[0].lockVersion = 1
+        var completedSession = activeSession
+        completedSession.status = .completed
+        completedSession.completedAt = "2026-10-07T12:15:00.000Z"
+        completedSession.lockVersion = 1
+        var capturedPayload: RoutineSessionCompletionPayload?
+        let viewModel = RoutinesViewModel(
+            listRoutines: { [] },
+            listActiveSessions: {
+                RoutineSessionPage(
+                    sessions: [activeSession],
+                    limit: 50,
+                    offset: 0,
+                    total: 1
+                )
+            },
+            startRoutineSession: { _ in throw RoutineAPIError.invalidResponse },
+            updateRoutineSessionItem: { _, _ in throw RoutineAPIError.invalidResponse },
+            completeRoutineSession: { id, payload in
+                XCTAssertEqual(id, activeSession.id)
+                capturedPayload = payload
+                return completedSession
+            },
+            now: { Date(timeIntervalSince1970: 0) }
+        )
+        await viewModel.load()
+
+        let didComplete = await viewModel.complete(sessionID: activeSession.id)
+        let payload = try XCTUnwrap(capturedPayload)
+
+        XCTAssertTrue(didComplete)
+        XCTAssertEqual(payload.status, .completed)
+        XCTAssertEqual(payload.completedAt, "1970-01-01T00:00:00.000Z")
+        XCTAssertEqual(payload.lockVersion, activeSession.lockVersion)
+        XCTAssertTrue(viewModel.activeSessions.isEmpty)
+    }
+
+    @MainActor
+    func testRoutineHistoryLoadsSubsequentPagesWithoutDuplicates() async {
+        let firstSession = routineSessionFixture(status: .completed)
+        let secondSession = routineSessionFixture(status: .completed)
+        var offsets: [Int] = []
+        let viewModel = RoutineHistoryViewModel { offset in
+            offsets.append(offset)
+            if offset == 0 {
+                return RoutineSessionPage(
+                    sessions: [firstSession],
+                    limit: 1,
+                    offset: 0,
+                    total: 2
+                )
+            }
+
+            return RoutineSessionPage(
+                sessions: [firstSession, secondSession],
+                limit: 1,
+                offset: 1,
+                total: 2
+            )
+        }
+
+        await viewModel.load()
+        await viewModel.loadMore()
+
+        XCTAssertEqual(offsets, [0, 1])
+        XCTAssertEqual(viewModel.sessions, [firstSession, secondSession])
+        XCTAssertFalse(viewModel.canLoadMore)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
     func testAPIConfigurationRejectsBearerTokenOverRemoteHTTP() {
         let configuration = APIConfiguration(
             baseURL: URL(string: "http://fitness.example")!,
