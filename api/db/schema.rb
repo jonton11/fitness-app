@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_07_010000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_08_010000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -41,6 +41,38 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_010000) do
     t.check_constraint "load_type::text = ANY (ARRAY['lb'::character varying, 'kg'::character varying, 'machine_stack'::character varying, 'plate_count'::character varying, 'bodyweight'::character varying, 'bodyweight_plus_added'::character varying, 'assisted'::character varying, 'none'::character varying]::text[])", name: "exercises_load_type_valid"
     t.check_constraint "name::text <> ''::text", name: "exercises_name_present"
     t.check_constraint "primary_muscle_group::text <> ''::text", name: "exercises_primary_muscle_group_present"
+  end
+
+  create_table "routine_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "routine_id", null: false
+    t.uuid "exercise_id", null: false
+    t.integer "position", null: false
+    t.string "target_mode", null: false
+    t.integer "sets"
+    t.integer "target_reps"
+    t.integer "target_duration_seconds"
+    t.text "notes_override"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["exercise_id"], name: "index_routine_items_on_exercise_id"
+    t.index ["routine_id", "position"], name: "index_routine_items_on_routine_id_and_position", unique: true
+    t.index ["routine_id"], name: "index_routine_items_on_routine_id"
+    t.check_constraint "\"position\" > 0", name: "routine_items_position_positive"
+    t.check_constraint "sets IS NULL OR sets > 0", name: "routine_items_sets_positive"
+    t.check_constraint "target_duration_seconds IS NULL OR target_duration_seconds > 0", name: "routine_items_target_duration_positive"
+    t.check_constraint "target_mode::text = ANY (ARRAY['completion_only'::character varying, 'reps'::character varying, 'duration'::character varying, 'load_optional'::character varying]::text[])", name: "routine_items_target_mode_valid"
+    t.check_constraint "target_reps IS NULL OR target_reps > 0", name: "routine_items_target_reps_positive"
+  end
+
+  create_table "routines", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "name", null: false
+    t.text "notes"
+    t.datetime "archived_at"
+    t.integer "lock_version", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["archived_at"], name: "index_routines_on_archived_at"
+    t.check_constraint "name::text <> ''::text", name: "routines_name_present"
   end
 
   create_table "sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -212,6 +244,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_010000) do
   end
 
   add_foreign_key "api_tokens", "users"
+  add_foreign_key "routine_items", "exercises"
+  add_foreign_key "routine_items", "routines", on_delete: :cascade
   add_foreign_key "sessions", "users"
   add_foreign_key "workout_session_exercises", "exercises", column: "selected_exercise_id"
   add_foreign_key "workout_session_exercises", "workout_sessions", on_delete: :cascade
