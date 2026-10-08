@@ -18,6 +18,23 @@ struct WorkoutHistoryView: View {
                         WorkoutHistoryRow(entry: entry)
                     }
                 }
+
+                if viewModel.canLoadMore {
+                    Button {
+                        Task {
+                            await viewModel.loadMore()
+                        }
+                    } label: {
+                        if viewModel.isLoadingMore {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Text("Load More")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .disabled(viewModel.isLoadingMore)
+                }
             }
             .overlay {
                 if viewModel.isLoading && viewModel.entries.isEmpty {

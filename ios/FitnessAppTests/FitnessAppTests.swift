@@ -233,8 +233,11 @@ final class FitnessAppTests: XCTestCase {
                 httpVersion: nil,
                 headerFields: ["Content-Type": "application/json"]
             )!
-            let responseData = try JSONEncoder().encode([
-                "workout_sessions": [completedSession]
+            let responseData = try JSONSerialization.data(withJSONObject: [
+                "workout_sessions": try JSONSerialization.jsonObject(
+                    with: JSONEncoder().encode([completedSession])
+                ),
+                "meta": ["limit": 25, "offset": 50, "total": 76]
             ])
 
             return (response, responseData)
@@ -243,7 +246,7 @@ final class FitnessAppTests: XCTestCase {
             URLProtocolStub.requestHandler = nil
         }
 
-        let sessions = try await apiClient.listWorkoutSessions()
+        let page = try await apiClient.listWorkoutSessions(limit: 25, offset: 50)
 
         let request = try XCTUnwrap(requestBox.request)
         let queryItems = try XCTUnwrap(
@@ -252,8 +255,19 @@ final class FitnessAppTests: XCTestCase {
 
         XCTAssertEqual(request.httpMethod, "GET")
         XCTAssertEqual(request.url?.path, "/api/v1/workout_sessions")
-        XCTAssertEqual(queryItems, [URLQueryItem(name: "status", value: "completed")])
-        XCTAssertEqual(sessions, [completedSession])
+        XCTAssertEqual(
+            queryItems,
+            [
+                URLQueryItem(name: "status", value: "completed"),
+                URLQueryItem(name: "limit", value: "25"),
+                URLQueryItem(name: "offset", value: "50")
+            ]
+        )
+        XCTAssertEqual(page.sessions, [completedSession])
+        XCTAssertEqual(page.limit, 25)
+        XCTAssertEqual(page.offset, 50)
+        XCTAssertEqual(page.total, 76)
+        XCTAssertTrue(page.hasNextPage)
     }
 
     func testWorkoutSessionAPIClientCreatesClientSnapshotWithRailsEnvelope() async throws {
@@ -797,7 +811,14 @@ final class FitnessAppTests: XCTestCase {
         olderServerSession.completedAt = "2026-10-02T12:30:00.000Z"
         let viewModel = WorkoutHistoryViewModel(
             activeWorkoutStore: activeWorkoutStore(box: box),
-            listWorkoutSessions: { [staleServerCopy, olderServerSession] }
+            listWorkoutSessions: { _ in
+                WorkoutSessionPage(
+                    sessions: [staleServerCopy, olderServerSession],
+                    limit: 50,
+                    offset: 0,
+                    total: 2
+                )
+            }
         )
 
         await viewModel.load()
@@ -841,7 +862,7 @@ final class FitnessAppTests: XCTestCase {
         )
         let viewModel = WorkoutHistoryViewModel(
             activeWorkoutStore: activeWorkoutStore(box: box),
-            listWorkoutSessions: { throw URLError(.notConnectedToInternet) }
+            listWorkoutSessions: { _ in throw URLError(.notConnectedToInternet) }
         )
 
         await viewModel.load()
@@ -850,6 +871,50 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertEqual(viewModel.entries[0].session, pendingSession)
         XCTAssertEqual(viewModel.entries[0].syncState, .needsAttention)
         XCTAssertEqual(viewModel.errorMessage, "Could not refresh workout history.")
+    }
+
+    @MainActor
+    func testWorkoutHistoryLoadsSubsequentPages() async {
+        var newerSession = workoutSessionFixture()
+        newerSession.status = .completed
+        newerSession.startedAt = "2026-10-03T12:00:00.000Z"
+        var olderSession = workoutSessionFixture(id: UUID())
+        olderSession.status = .completed
+        olderSession.startedAt = "2026-10-02T12:00:00.000Z"
+        var requestedOffsets: [Int] = []
+        let viewModel = WorkoutHistoryViewModel(
+            activeWorkoutStore: activeWorkoutStore(box: ActiveWorkoutStoreBox(state: nil)),
+            listWorkoutSessions: { offset in
+                requestedOffsets.append(offset)
+                if offset == 0 {
+                    return WorkoutSessionPage(
+                        sessions: [newerSession],
+                        limit: 1,
+                        offset: 0,
+                        total: 2
+                    )
+                }
+
+                return WorkoutSessionPage(
+                    sessions: [olderSession],
+                    limit: 1,
+                    offset: 1,
+                    total: 2
+                )
+            }
+        )
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.entries.map(\.id), [newerSession.id])
+        XCTAssertTrue(viewModel.canLoadMore)
+
+        await viewModel.loadMore()
+
+        XCTAssertEqual(requestedOffsets, [0, 1])
+        XCTAssertEqual(viewModel.entries.map(\.id), [newerSession.id, olderSession.id])
+        XCTAssertFalse(viewModel.canLoadMore)
+        XCTAssertNil(viewModel.errorMessage)
     }
 
     @MainActor
@@ -1831,8 +1896,10 @@ final class FitnessAppTests: XCTestCase {
         )
     }
 
-    private func workoutSessionFixture(templateID: UUID = UUID()) -> WorkoutSession {
-        let sessionID = UUID()
+    private func workoutSessionFixture(
+        id sessionID: UUID = UUID(),
+        templateID: UUID = UUID()
+    ) -> WorkoutSession {
         let exerciseID = UUID()
         let exerciseRowID = UUID()
 

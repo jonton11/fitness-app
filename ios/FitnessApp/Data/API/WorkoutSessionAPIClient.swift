@@ -9,14 +9,27 @@ struct WorkoutSessionAPIClient {
         session: .shared
     )
 
-    func listWorkoutSessions(status: WorkoutSessionStatus = .completed) async throws -> [WorkoutSession] {
+    func listWorkoutSessions(
+        status: WorkoutSessionStatus = .completed,
+        limit: Int = 50,
+        offset: Int = 0
+    ) async throws -> WorkoutSessionPage {
         let envelope: WorkoutSessionListEnvelope = try await request(
             path: "/api/v1/workout_sessions",
             method: "GET",
-            queryItems: [URLQueryItem(name: "status", value: status.rawValue)]
+            queryItems: [
+                URLQueryItem(name: "status", value: status.rawValue),
+                URLQueryItem(name: "limit", value: String(limit)),
+                URLQueryItem(name: "offset", value: String(offset))
+            ]
         )
 
-        return envelope.workoutSessions
+        return WorkoutSessionPage(
+            sessions: envelope.workoutSessions,
+            limit: envelope.meta.limit,
+            offset: envelope.meta.offset,
+            total: envelope.meta.total
+        )
     }
 
     func startWorkoutSession(templateID: UUID, startedAt: String? = nil) async throws -> WorkoutSession {
@@ -128,6 +141,21 @@ struct WorkoutSessionAPIClient {
 enum WorkoutSessionAPIError: Error, Equatable {
     case invalidResponse
     case requestFailed(statusCode: Int)
+}
+
+struct WorkoutSessionPage: Equatable {
+    var sessions: [WorkoutSession]
+    var limit: Int
+    var offset: Int
+    var total: Int
+
+    var nextOffset: Int {
+        offset + sessions.count
+    }
+
+    var hasNextPage: Bool {
+        !sessions.isEmpty && nextOffset < total
+    }
 }
 
 struct WorkoutSessionStartPayload: Codable, Equatable {
@@ -252,10 +280,18 @@ struct WorkoutSessionStatusPayload: Codable, Equatable {
 
 private struct WorkoutSessionListEnvelope: Decodable {
     var workoutSessions: [WorkoutSession]
+    var meta: PaginationMeta
 
     enum CodingKeys: String, CodingKey {
         case workoutSessions = "workout_sessions"
+        case meta
     }
+}
+
+private struct PaginationMeta: Decodable {
+    var limit: Int
+    var offset: Int
+    var total: Int
 }
 
 private struct WorkoutSessionEnvelope: Decodable {

@@ -18,15 +18,19 @@ struct WorkoutHistoryEntry: Equatable, Identifiable {
 final class WorkoutHistoryViewModel: ObservableObject {
     @Published private(set) var entries: [WorkoutHistoryEntry] = []
     @Published private(set) var isLoading = false
+    @Published private(set) var isLoadingMore = false
+    @Published private(set) var canLoadMore = false
     @Published var errorMessage: String?
 
     private let activeWorkoutStore: ActiveWorkoutStore
-    private let listWorkoutSessions: () async throws -> [WorkoutSession]
+    private let listWorkoutSessions: (Int) async throws -> WorkoutSessionPage
+    private var serverSessions: [WorkoutSession] = []
+    private var nextOffset = 0
 
     init(
         activeWorkoutStore: ActiveWorkoutStore = .live,
-        listWorkoutSessions: @escaping () async throws -> [WorkoutSession] = {
-            try await WorkoutSessionAPIClient.live.listWorkoutSessions()
+        listWorkoutSessions: @escaping (Int) async throws -> WorkoutSessionPage = { offset in
+            try await WorkoutSessionAPIClient.live.listWorkoutSessions(offset: offset)
         }
     ) {
         self.activeWorkoutStore = activeWorkoutStore
@@ -54,15 +58,35 @@ final class WorkoutHistoryViewModel: ObservableObject {
         }
 
         do {
-            let sessions = try await listWorkoutSessions()
-            entries = merge(localEntry: localEntry, serverSessions: sessions)
+            let page = try await listWorkoutSessions(0)
+            serverSessions = page.sessions
+            applyPagination(page)
+            entries = merge(localEntry: localEntry, serverSessions: serverSessions)
             errorMessage = storeErrorMessage
         } catch {
-            let previouslyLoadedSessions = entries
-                .filter { $0.syncState == nil }
-                .map(\.session)
-            entries = merge(localEntry: localEntry, serverSessions: previouslyLoadedSessions)
+            entries = merge(localEntry: localEntry, serverSessions: serverSessions)
             errorMessage = storeErrorMessage ?? "Could not refresh workout history."
+        }
+    }
+
+    func loadMore() async {
+        guard canLoadMore, !isLoading, !isLoadingMore else {
+            return
+        }
+
+        isLoadingMore = true
+        defer {
+            isLoadingMore = false
+        }
+
+        do {
+            let page = try await listWorkoutSessions(nextOffset)
+            appendServerSessions(page.sessions)
+            applyPagination(page)
+            entries = merge(localEntry: try pendingLocalEntry(), serverSessions: serverSessions)
+            errorMessage = nil
+        } catch {
+            errorMessage = "Could not load more workout history."
         }
     }
 
@@ -107,5 +131,15 @@ final class WorkoutHistoryViewModel: ObservableObject {
         return mergedEntries.sorted {
             $0.session.startedAt > $1.session.startedAt
         }
+    }
+
+    private func appendServerSessions(_ sessions: [WorkoutSession]) {
+        let existingIDs = Set(serverSessions.map(\.id))
+        serverSessions.append(contentsOf: sessions.filter { !existingIDs.contains($0.id) })
+    }
+
+    private func applyPagination(_ page: WorkoutSessionPage) {
+        nextOffset = page.nextOffset
+        canLoadMore = page.hasNextPage
     }
 }
