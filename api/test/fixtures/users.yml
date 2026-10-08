@@ -1,0 +1,4 @@
+primary:
+  id: 10000000-0000-0000-0000-000000000001
+  email_address: owner@example.com
+  password_digest: <%= BCrypt::Password.create("correct-password") %>

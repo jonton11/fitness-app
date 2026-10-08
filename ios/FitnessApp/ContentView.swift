@@ -1,7 +1,23 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var connectionSettings: ConnectionSettingsViewModel
+
+    init(connectionSettings: ConnectionSettingsViewModel = ConnectionSettingsViewModel()) {
+        _connectionSettings = StateObject(wrappedValue: connectionSettings)
+    }
+
     var body: some View {
+        if connectionSettings.hasCredentials {
+            mainTabs
+        } else {
+            NavigationStack {
+                ConnectionSettingsView(viewModel: connectionSettings, isRequired: true)
+            }
+        }
+    }
+
+    private var mainTabs: some View {
         TabView {
             NavigationStack {
                 VStack(alignment: .leading, spacing: 16) {
@@ -38,6 +54,13 @@ struct ContentView: View {
                 .tabItem {
                     Label("Exercises", systemImage: "list.bullet.rectangle")
                 }
+
+            NavigationStack {
+                ConnectionSettingsView(viewModel: connectionSettings)
+            }
+            .tabItem {
+                Label("Settings", systemImage: "gearshape")
+            }
         }
     }
 }

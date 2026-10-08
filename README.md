@@ -34,6 +34,27 @@ Workout templates can be created, edited, archived, and restored. Templates cont
 
 ## API
 
+### Single-user authentication
+
+Provision the owner account explicitly; the app has no public sign-up route:
+
+```sh
+cd api
+FITNESS_USER_EMAIL=owner@example.com FITNESS_USER_PASSWORD='replace-me' asdf exec bundle exec rails fitness:provision_user
+```
+
+Browser clients can sign in with that email and password using an encrypted,
+HTTP-only session cookie. Issue a bearer token for non-browser clients separately:
+
+```sh
+cd api
+FITNESS_USER_EMAIL=owner@example.com FITNESS_API_TOKEN_NAME='Jonathan iPhone' asdf exec bundle exec rails fitness:issue_api_token
+```
+
+The token is shown once and Rails stores only its SHA-256 digest. The iOS client
+stores it in Keychain. Issuing another token with the same name rotates that
+device's credential and immediately invalidates the old token.
+
 With Docker:
 
 ```sh

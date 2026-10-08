@@ -2,7 +2,10 @@
 
 SwiftUI iPhone client for the personal fitness app.
 
-The app includes Workouts and Exercises tabs backed by the Rails API. Workout template management is online-only for now; offline workout execution and sync come later.
+The app includes workout templates, local-first workout execution, workout
+history, and exercise management. Enter the private server URL and issued bearer
+token on first launch; the token is stored in Keychain and can be changed later
+from Settings.
 
 ## Build
 

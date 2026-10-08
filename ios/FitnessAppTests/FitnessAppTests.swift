@@ -173,7 +173,8 @@ final class FitnessAppTests: XCTestCase {
         let urlSession = URLSession(configuration: configuration)
         let apiClient = WorkoutSessionAPIClient(
             baseURL: URL(string: "https://fitness.example")!,
-            session: urlSession
+            session: urlSession,
+            bearerToken: "fitness_test_token"
         )
 
         URLProtocolStub.requestHandler = { request in
@@ -207,6 +208,7 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertEqual(request.httpMethod, "POST")
         XCTAssertEqual(request.url?.path, "/api/v1/workout_sessions")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer fitness_test_token")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
         XCTAssertEqual(payload["workout_template_id"] as? String, templateID.uuidString)
         XCTAssertEqual(payload["started_at"] as? String, "2026-10-03T12:00:00.000Z")
@@ -1919,6 +1921,102 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertEqual(viewModel.activeSession, existingSession)
         XCTAssertEqual(viewModel.errorMessage, "Finish or cancel the active workout before starting another.")
         XCTAssertEqual(box.state, existingState)
+    }
+
+    @MainActor
+    func testConnectionSettingsSavesNormalizedCredentials() throws {
+        var savedCredentials: APICredentials?
+        let viewModel = ConnectionSettingsViewModel(
+            loadCredentials: { nil },
+            saveCredentials: { savedCredentials = $0 },
+            clearCredentials: {}
+        )
+        viewModel.serverURL = " HTTPS://fitness.example/ "
+        viewModel.apiToken = " fitness_test_token "
+
+        viewModel.save()
+
+        let credentials = try XCTUnwrap(savedCredentials)
+        XCTAssertEqual(credentials.serverURL.absoluteString, "https://fitness.example")
+        XCTAssertEqual(credentials.token, "fitness_test_token")
+        XCTAssertTrue(viewModel.hasCredentials)
+        XCTAssertEqual(viewModel.serverURL, "https://fitness.example")
+        XCTAssertTrue(viewModel.apiToken.isEmpty)
+        XCTAssertEqual(viewModel.confirmationMessage, "Connection settings saved.")
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testConnectionSettingsPreservesStoredTokenWhenOnlyServerChanges() throws {
+        let existingCredentials = APICredentials(
+            serverURL: URL(string: "https://fitness.example")!,
+            token: "fitness_existing_token"
+        )
+        var savedCredentials: APICredentials?
+        let viewModel = ConnectionSettingsViewModel(
+            loadCredentials: { existingCredentials },
+            saveCredentials: { savedCredentials = $0 },
+            clearCredentials: {}
+        )
+        viewModel.serverURL = "https://fitness-failover.example"
+
+        viewModel.save()
+
+        let credentials = try XCTUnwrap(savedCredentials)
+        XCTAssertEqual(credentials.serverURL.absoluteString, "https://fitness-failover.example")
+        XCTAssertEqual(credentials.token, existingCredentials.token)
+        XCTAssertTrue(viewModel.hasCredentials)
+    }
+
+    @MainActor
+    func testConnectionSettingsAllowsLocalhostHTTPForDevelopment() throws {
+        var savedCredentials: APICredentials?
+        let viewModel = ConnectionSettingsViewModel(
+            loadCredentials: { nil },
+            saveCredentials: { savedCredentials = $0 },
+            clearCredentials: {}
+        )
+        viewModel.serverURL = "HTTP://LOCALHOST:3000/"
+        viewModel.apiToken = "fitness_test_token"
+
+        viewModel.save()
+
+        let credentials = try XCTUnwrap(savedCredentials)
+        XCTAssertEqual(credentials.serverURL.absoluteString, "http://localhost:3000")
+        XCTAssertTrue(viewModel.hasCredentials)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testConnectionSettingsRejectsRemoteHTTPServer() {
+        var didSave = false
+        let viewModel = ConnectionSettingsViewModel(
+            loadCredentials: { nil },
+            saveCredentials: { _ in didSave = true },
+            clearCredentials: {}
+        )
+        viewModel.serverURL = "http://fitness.example"
+        viewModel.apiToken = "fitness_test_token"
+
+        viewModel.save()
+
+        XCTAssertFalse(didSave)
+        XCTAssertFalse(viewModel.hasCredentials)
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Use HTTPS, or HTTP with localhost for development."
+        )
+    }
+
+    func testAPIConfigurationRejectsBearerTokenOverRemoteHTTP() {
+        let configuration = APIConfiguration(
+            baseURL: URL(string: "http://fitness.example")!,
+            bearerToken: "fitness_test_token"
+        )
+
+        XCTAssertThrowsError(try configuration.makeRequest(path: "/api/v1/exercises")) { error in
+            XCTAssertEqual(error as? APIConfigurationError, .insecureServerURL)
+        }
     }
 
     private func activeWorkoutStore(box: ActiveWorkoutStoreBox) -> ActiveWorkoutStore {

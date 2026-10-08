@@ -1,13 +1,23 @@
 import Foundation
 
 struct ExerciseAPIClient {
-    var baseURL: URL
+    private var configuration: APIConfiguration
     var session: URLSession
 
     static let live = ExerciseAPIClient(
-        baseURL: URL(string: "http://localhost:3000")!,
+        configuration: .live,
         session: .shared
     )
+
+    init(baseURL: URL, session: URLSession, bearerToken: String? = nil) {
+        configuration = APIConfiguration(baseURL: baseURL, bearerToken: bearerToken)
+        self.session = session
+    }
+
+    init(configuration: APIConfiguration, session: URLSession) {
+        self.configuration = configuration
+        self.session = session
+    }
 
     func listExercises() async throws -> [Exercise] {
         let envelope: ExerciseListEnvelope = try await request(
@@ -43,7 +53,7 @@ struct ExerciseAPIClient {
         method: String,
         body: Body? = Optional<String>.none
     ) async throws -> Response {
-        var request = URLRequest(url: baseURL.appending(path: path))
+        var request = try configuration.makeRequest(path: path)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
