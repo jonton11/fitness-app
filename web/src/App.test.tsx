@@ -670,6 +670,26 @@ describe('App', () => {
     expect(screen.getByDisplayValue('Each side')).toBeInTheDocument()
   })
 
+  it('opens manual activity logging', async () => {
+    mockJsonResponse({ workout_templates: [], meta: {} })
+    mockJsonResponse({ exercises: [], meta: {} })
+    mockJsonResponse({
+      activities: [],
+      meta: { limit: 50, offset: 0, total: 0 },
+    })
+
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Activities' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Activities' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Log Activity' }),
+    ).toBeInTheDocument()
+  })
+
   it('creates a routine with exercise targets', async () => {
     const savedRoutine = {
       ...dailyRehab,
