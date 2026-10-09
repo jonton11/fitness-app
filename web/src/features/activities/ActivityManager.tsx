@@ -14,6 +14,7 @@ import type {
 } from '../../api/activities'
 
 type ActivityDraft = {
+  id: string
   kind: ActivityKind
   startedAt: string
   hasEndTime: boolean
@@ -27,6 +28,7 @@ const pageSize = 50
 export function ActivityManager() {
   const [activities, setActivities] = useState<Activity[]>([])
   const [total, setTotal] = useState(0)
+  const [nextOffset, setNextOffset] = useState(0)
   const [draft, setDraft] = useState<ActivityDraft>(() => newDraft())
   const [errors, setErrors] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -41,6 +43,7 @@ export function ActivityManager() {
         if (isCurrent) {
           setActivities(page.activities)
           setTotal(page.total)
+          setNextOffset(page.offset + page.activities.length)
           setErrors([])
         }
       })
@@ -78,13 +81,19 @@ export function ActivityManager() {
     setErrors([])
 
     try {
-      const activity = await createActivity(payload)
-      setActivities((current) => [
-        activity,
-        ...current.filter((item) => item.id !== activity.id),
-      ])
-      setTotal((current) => current + 1)
+      await createActivity(payload)
       setDraft(newDraft())
+
+      try {
+        const page = await listActivities(0, pageSize)
+        setActivities(page.activities)
+        setTotal(page.total)
+        setNextOffset(page.offset + page.activities.length)
+      } catch {
+        setTotal(activities.length)
+        setNextOffset(activities.length)
+        setErrors(['Activity logged, but history could not be refreshed.'])
+      }
     } catch (error) {
       setErrors(errorMessages(error, 'Could not log activity.'))
     } finally {
@@ -93,20 +102,21 @@ export function ActivityManager() {
   }
 
   async function loadMore() {
-    if (isLoadingMore || activities.length >= total) {
+    if (isLoadingMore || nextOffset >= total) {
       return
     }
 
     setIsLoadingMore(true)
 
     try {
-      const page = await listActivities(activities.length, pageSize)
+      const page = await listActivities(nextOffset, pageSize)
       const existingIDs = new Set(activities.map((activity) => activity.id))
       setActivities((current) => [
         ...current,
         ...page.activities.filter((activity) => !existingIDs.has(activity.id)),
       ])
       setTotal(page.total)
+      setNextOffset(page.offset + page.activities.length)
     } catch {
       setErrors(['Could not load more activity history.'])
     } finally {
@@ -138,7 +148,7 @@ export function ActivityManager() {
                 <ActivityHistoryRow activity={activity} key={activity.id} />
               ))}
             </div>
-            {activities.length < total ? (
+            {nextOffset < total ? (
               <button
                 className="secondary-button activity-load-more"
                 type="button"
@@ -288,6 +298,7 @@ function ActivityHistoryRow({ activity }: { activity: Activity }) {
 
 function newDraft(now = new Date()): ActivityDraft {
   return {
+    id: crypto.randomUUID(),
     kind: 'rest_day',
     startedAt: localDateTimeValue(now),
     hasEndTime: false,
@@ -317,6 +328,7 @@ function payloadFromDraft(
   }
 
   return {
+    id: draft.id,
     kind: draft.kind,
     started_at: startedAt.toISOString(),
     ended_at: endedAt?.toISOString() ?? null,

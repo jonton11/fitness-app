@@ -2599,20 +2599,21 @@ final class FitnessAppTests: XCTestCase {
     func testActivitiesLogNormalizesManualEntry() async throws {
         let activityID = UUID()
         var capturedPayload: ActivityCreatePayload?
+        let savedActivity = activityFixture(
+            id: activityID,
+            kind: .basketball,
+            startedAt: "1970-01-01T00:00:00.000Z",
+            endedAt: "1970-01-01T01:00:00.000Z",
+            notes: "Pickup game",
+            focusTags: ["Lower Body", "Cardio"]
+        )
         let viewModel = ActivitiesViewModel(
             listActivities: { _ in
-                ActivityPage(activities: [], limit: 50, offset: 0, total: 0)
+                ActivityPage(activities: [savedActivity], limit: 50, offset: 0, total: 1)
             },
             createActivity: { payload in
                 capturedPayload = payload
-                return self.activityFixture(
-                    id: payload.id,
-                    kind: payload.kind,
-                    startedAt: payload.startedAt,
-                    endedAt: payload.endedAt,
-                    notes: payload.notes,
-                    focusTags: payload.focusTags
-                )
+                return savedActivity
             }
         )
         let draft = ActivityDraft(
@@ -2643,9 +2644,10 @@ final class FitnessAppTests: XCTestCase {
         let activityID = UUID()
         var submittedIDs: [UUID] = []
         var attempt = 0
+        let savedActivity = activityFixture(id: activityID, kind: .restDay)
         let viewModel = ActivitiesViewModel(
             listActivities: { _ in
-                ActivityPage(activities: [], limit: 50, offset: 0, total: 0)
+                ActivityPage(activities: [savedActivity], limit: 50, offset: 0, total: 1)
             },
             createActivity: { payload in
                 submittedIDs.append(payload.id)
@@ -2655,7 +2657,7 @@ final class FitnessAppTests: XCTestCase {
                     throw ActivityAPIError.invalidResponse
                 }
 
-                return self.activityFixture(id: payload.id, kind: payload.kind)
+                return savedActivity
             }
         )
         let draft = ActivityDraft(id: activityID, kind: .restDay)
@@ -2667,6 +2669,62 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertTrue(secondAttempt)
         XCTAssertEqual(submittedIDs, [activityID, activityID])
         XCTAssertEqual(viewModel.activities.map(\.id), [activityID])
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testActivitiesReconcileServerOrderingAfterBackdatedCreate() async {
+        let recentActivity = activityFixture(
+            startedAt: "2026-10-08T18:00:00.000Z",
+            endedAt: nil,
+            notes: "Recent activity"
+        )
+        let backdatedActivity = activityFixture(
+            kind: .recovery,
+            startedAt: "2026-10-01T18:00:00.000Z",
+            endedAt: nil,
+            notes: "Backdated recovery",
+            focusTags: []
+        )
+        var listCallCount = 0
+        var offsets: [Int] = []
+        let viewModel = ActivitiesViewModel(
+            listActivities: { offset in
+                offsets.append(offset)
+                listCallCount += 1
+
+                if listCallCount == 1 {
+                    return ActivityPage(
+                        activities: [recentActivity],
+                        limit: 50,
+                        offset: 0,
+                        total: 1
+                    )
+                }
+
+                return ActivityPage(
+                    activities: [recentActivity, backdatedActivity],
+                    limit: 50,
+                    offset: 0,
+                    total: 2
+                )
+            },
+            createActivity: { _ in backdatedActivity }
+        )
+
+        await viewModel.load()
+        let didLog = await viewModel.log(
+            draft: ActivityDraft(
+                id: backdatedActivity.id,
+                kind: .recovery,
+                startedAt: Date(timeIntervalSince1970: 0)
+            )
+        )
+
+        XCTAssertTrue(didLog)
+        XCTAssertEqual(offsets, [0, 0])
+        XCTAssertEqual(viewModel.activities, [recentActivity, backdatedActivity])
+        XCTAssertFalse(viewModel.canLoadMore)
         XCTAssertNil(viewModel.errorMessage)
     }
 
