@@ -10,10 +10,26 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_08_020000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_08_030000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
+
+  create_table "activities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "kind", null: false
+    t.datetime "started_at", null: false
+    t.datetime "ended_at"
+    t.text "notes"
+    t.string "focus_tags", default: [], null: false, array: true
+    t.string "source", default: "manual", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["kind"], name: "index_activities_on_kind"
+    t.index ["started_at"], name: "index_activities_on_started_at"
+    t.check_constraint "ended_at IS NULL OR ended_at >= started_at", name: "activities_end_after_start"
+    t.check_constraint "kind::text = ANY (ARRAY['basketball'::character varying, 'rest_day'::character varying, 'recovery'::character varying, 'other'::character varying]::text[])", name: "activities_kind_valid"
+    t.check_constraint "source::text = 'manual'::text", name: "activities_source_valid"
+  end
 
   create_table "api_tokens", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "user_id", null: false
