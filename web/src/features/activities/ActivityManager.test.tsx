@@ -19,6 +19,9 @@ const basketball: Activity = {
 describe('ActivityManager', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
+    vi.stubGlobal('crypto', {
+      randomUUID: vi.fn(() => '00000000-0000-4000-8000-000000000001'),
+    })
   })
 
   afterEach(() => {
@@ -48,6 +51,10 @@ describe('ActivityManager', () => {
       meta: { limit: 50, offset: 0, total: 0 },
     })
     mockJsonResponse({ activity: basketball }, 201)
+    mockJsonResponse({
+      activities: [basketball],
+      meta: { limit: 50, offset: 0, total: 1 },
+    })
 
     render(<ActivityManager />)
 
@@ -68,14 +75,93 @@ describe('ActivityManager', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Log Activity' }))
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledTimes(2)
+      expect(fetch).toHaveBeenCalledTimes(3)
     })
     expect(lastActivityRequest()).toMatchObject({
+      id: '00000000-0000-4000-8000-000000000001',
       kind: 'basketball',
       notes: 'Pickup game',
       focus_tags: ['Lower Body', 'Cardio'],
     })
     expect(await screen.findByText('Pickup game')).toBeInTheDocument()
+  })
+
+  it('reuses the draft ID when retrying an uncertain submission', async () => {
+    mockJsonResponse({
+      activities: [],
+      meta: { limit: 50, offset: 0, total: 0 },
+    })
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError('Connection lost'))
+    mockJsonResponse({ activity: basketball }, 201)
+    mockJsonResponse({
+      activities: [basketball],
+      meta: { limit: 50, offset: 0, total: 1 },
+    })
+
+    render(<ActivityManager />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Log Activity' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not log activity.',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Log Activity' }))
+
+    await waitFor(() => {
+      expect(activityRequests()).toHaveLength(2)
+    })
+    expect(activityRequests().map((request) => request.id)).toEqual([
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000001',
+    ])
+  })
+
+  it('resumes pagination after logging a backdated activity', async () => {
+    const firstPage = Array.from({ length: 50 }, (_, index) => ({
+      ...basketball,
+      id: `activity-${index}`,
+      notes: `Activity ${index + 1}`,
+    }))
+    const backdated: Activity = {
+      ...basketball,
+      id: 'activity-51',
+      kind: 'recovery',
+      started_at: '2026-10-01T18:00:00.000Z',
+      ended_at: null,
+      notes: 'Backdated recovery',
+      focus_tags: [],
+    }
+    mockJsonResponse({
+      activities: firstPage,
+      meta: { limit: 50, offset: 0, total: 50 },
+    })
+    mockJsonResponse({ activity: backdated }, 201)
+    mockJsonResponse({
+      activities: firstPage,
+      meta: { limit: 50, offset: 0, total: 51 },
+    })
+    mockJsonResponse({
+      activities: [backdated],
+      meta: { limit: 50, offset: 50, total: 51 },
+    })
+
+    render(<ActivityManager />)
+
+    fireEvent.change(await screen.findByLabelText('Started at'), {
+      target: { value: '2026-10-01T11:00' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Log Activity' }))
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3))
+    expect(screen.queryByText('Backdated recovery')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Load More' }))
+
+    expect(await screen.findByText('Backdated recovery')).toBeInTheDocument()
+    expect(fetch).toHaveBeenNthCalledWith(
+      4,
+      '/api/v1/activities?limit=50&offset=50',
+      expect.objectContaining({ headers: expect.any(Object) }),
+    )
   })
 
   it('keeps the form open when creation fails', async () => {
@@ -109,11 +195,18 @@ function mockJsonResponse(body: unknown, status = 200) {
 }
 
 function lastActivityRequest() {
-  const lastCall = vi.mocked(fetch).mock.calls.at(-1)
-  const init = lastCall?.[1] as RequestInit | undefined
-  const body = JSON.parse(init?.body as string) as {
-    activity: Record<string, unknown>
-  }
+  return activityRequests().at(-1)
+}
 
-  return body.activity
+function activityRequests() {
+  return vi
+    .mocked(fetch)
+    .mock.calls.filter(([, init]) => init?.method === 'POST')
+    .map(([, init]) => {
+      const body = JSON.parse(init?.body as string) as {
+        activity: Record<string, unknown>
+      }
+
+      return body.activity
+    })
 }

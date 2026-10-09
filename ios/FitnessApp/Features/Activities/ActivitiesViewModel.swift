@@ -68,9 +68,7 @@ final class ActivitiesViewModel: ObservableObject {
 
         do {
             let page = try await listActivities(0)
-            activities = page.activities
-            nextOffset = page.nextOffset
-            canLoadMore = page.hasNextPage
+            replaceFirstPage(with: page)
         } catch {
             errorMessage = "Could not load activity history."
         }
@@ -119,20 +117,28 @@ final class ActivitiesViewModel: ObservableObject {
         )
 
         do {
-            let activity = try await createActivity(payload)
-
-            if let index = activities.firstIndex(where: { $0.id == activity.id }) {
-                activities[index] = activity
-            } else {
-                activities.insert(activity, at: 0)
-                nextOffset += 1
-            }
-
-            return true
+            _ = try await createActivity(payload)
         } catch {
             errorMessage = "Could not log activity."
             return false
         }
+
+        do {
+            let page = try await listActivities(0)
+            replaceFirstPage(with: page)
+        } catch {
+            nextOffset = 0
+            canLoadMore = false
+            errorMessage = "Activity logged, but history could not be refreshed."
+        }
+
+        return true
+    }
+
+    private func replaceFirstPage(with page: ActivityPage) {
+        activities = page.activities
+        nextOffset = page.nextOffset
+        canLoadMore = page.hasNextPage
     }
 }
 

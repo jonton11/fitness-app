@@ -20,7 +20,7 @@ export type Activity = {
 }
 
 export type ActivityPayload = {
-  id?: string
+  id: string
   kind: ActivityKind
   started_at: string
   ended_at: string | null
