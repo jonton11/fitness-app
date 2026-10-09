@@ -4,6 +4,7 @@ Rails.application.routes.draw do
   namespace :api do
     namespace :v1 do
       resource :session, only: %i[show create destroy]
+      resources :activities, only: %i[index show create]
       resources :exercises, only: %i[index show create update]
       resources :routines, only: %i[index show create update]
       resources :routine_sessions, only: %i[index show create update]
