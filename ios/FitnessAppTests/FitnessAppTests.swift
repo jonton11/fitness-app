@@ -2273,6 +2273,111 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertTrue(page.hasNextPage)
     }
 
+    func testActivityAPIClientListsPaginatedHistory() async throws {
+        let requestBox = URLRequestBox()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolStub.self]
+        let apiClient = ActivityAPIClient(
+            baseURL: URL(string: "https://fitness.example")!,
+            session: URLSession(configuration: configuration)
+        )
+        let activity = activityFixture()
+
+        URLProtocolStub.requestHandler = { request in
+            requestBox.request = request
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            let activities = try JSONSerialization.jsonObject(
+                with: JSONEncoder().encode([activity])
+            )
+            let responseData = try JSONSerialization.data(withJSONObject: [
+                "activities": activities,
+                "meta": ["limit": 25, "offset": 25, "total": 51]
+            ])
+
+            return (response, responseData)
+        }
+        defer {
+            URLProtocolStub.requestHandler = nil
+        }
+
+        let page = try await apiClient.listActivities(limit: 25, offset: 25)
+        let request = try XCTUnwrap(requestBox.request)
+        let queryItems = try XCTUnwrap(
+            URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+        )
+
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.url?.path, "/api/v1/activities")
+        XCTAssertEqual(
+            queryItems,
+            [
+                URLQueryItem(name: "limit", value: "25"),
+                URLQueryItem(name: "offset", value: "25")
+            ]
+        )
+        XCTAssertEqual(page.activities, [activity])
+        XCTAssertEqual(page.nextOffset, 26)
+        XCTAssertTrue(page.hasNextPage)
+    }
+
+    func testActivityAPIClientCreatesManualActivity() async throws {
+        let activityID = UUID()
+        let requestBox = URLRequestBox()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolStub.self]
+        let apiClient = ActivityAPIClient(
+            baseURL: URL(string: "https://fitness.example")!,
+            session: URLSession(configuration: configuration)
+        )
+        let payload = ActivityCreatePayload(
+            id: activityID,
+            kind: .basketball,
+            startedAt: "2026-10-08T01:00:00.000Z",
+            endedAt: "2026-10-08T02:00:00.000Z",
+            notes: "Pickup game",
+            focusTags: ["Lower Body", "Cardio"]
+        )
+        let activity = activityFixture(id: activityID)
+
+        URLProtocolStub.requestHandler = { request in
+            requestBox.request = request
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 201,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (
+                response,
+                try JSONEncoder().encode(["activity": activity])
+            )
+        }
+        defer {
+            URLProtocolStub.requestHandler = nil
+        }
+
+        let createdActivity = try await apiClient.createActivity(payload: payload)
+        let request = try XCTUnwrap(requestBox.request)
+        let bodyData = try XCTUnwrap(request.httpBody ?? request.httpBodyStream?.readData())
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+        let activityPayload = try XCTUnwrap(body["activity"] as? [String: Any])
+
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.path, "/api/v1/activities")
+        XCTAssertEqual(activityPayload["id"] as? String, activityID.uuidString)
+        XCTAssertEqual(activityPayload["kind"] as? String, "basketball")
+        XCTAssertEqual(activityPayload["started_at"] as? String, payload.startedAt)
+        XCTAssertEqual(activityPayload["ended_at"] as? String, payload.endedAt)
+        XCTAssertEqual(activityPayload["notes"] as? String, "Pickup game")
+        XCTAssertEqual(activityPayload["focus_tags"] as? [String], ["Lower Body", "Cardio"])
+        XCTAssertEqual(createdActivity, activity)
+    }
+
     @MainActor
     func testRoutinesLoadAvailableAndActiveSessions() async {
         let routine = routineFixture()
@@ -2454,6 +2559,175 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertNil(viewModel.errorMessage)
     }
 
+    @MainActor
+    func testActivitiesLoadSubsequentPagesWithoutDuplicates() async {
+        let firstActivity = activityFixture()
+        let secondActivity = activityFixture(kind: .recovery)
+        var offsets: [Int] = []
+        let viewModel = ActivitiesViewModel(
+            listActivities: { offset in
+                offsets.append(offset)
+                if offset == 0 {
+                    return ActivityPage(
+                        activities: [firstActivity],
+                        limit: 1,
+                        offset: 0,
+                        total: 2
+                    )
+                }
+
+                return ActivityPage(
+                    activities: [firstActivity, secondActivity],
+                    limit: 1,
+                    offset: 1,
+                    total: 2
+                )
+            },
+            createActivity: { _ in throw ActivityAPIError.invalidResponse }
+        )
+
+        await viewModel.load()
+        await viewModel.loadMore()
+
+        XCTAssertEqual(offsets, [0, 1])
+        XCTAssertEqual(viewModel.activities, [firstActivity, secondActivity])
+        XCTAssertFalse(viewModel.canLoadMore)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testActivitiesLogNormalizesManualEntry() async throws {
+        let activityID = UUID()
+        var capturedPayload: ActivityCreatePayload?
+        let savedActivity = activityFixture(
+            id: activityID,
+            kind: .basketball,
+            startedAt: "1970-01-01T00:00:00.000Z",
+            endedAt: "1970-01-01T01:00:00.000Z",
+            notes: "Pickup game",
+            focusTags: ["Lower Body", "Cardio"]
+        )
+        let viewModel = ActivitiesViewModel(
+            listActivities: { _ in
+                ActivityPage(activities: [savedActivity], limit: 50, offset: 0, total: 1)
+            },
+            createActivity: { payload in
+                capturedPayload = payload
+                return savedActivity
+            }
+        )
+        let draft = ActivityDraft(
+            id: activityID,
+            kind: .basketball,
+            startedAt: Date(timeIntervalSince1970: 0),
+            endedAt: Date(timeIntervalSince1970: 3_600),
+            notes: "  Pickup game  ",
+            focusTags: " Lower Body, Cardio, Lower Body, "
+        )
+
+        let didLog = await viewModel.log(draft: draft)
+        let payload = try XCTUnwrap(capturedPayload)
+
+        XCTAssertTrue(didLog)
+        XCTAssertEqual(payload.id, activityID)
+        XCTAssertEqual(payload.kind, .basketball)
+        XCTAssertEqual(payload.startedAt, "1970-01-01T00:00:00.000Z")
+        XCTAssertEqual(payload.endedAt, "1970-01-01T01:00:00.000Z")
+        XCTAssertEqual(payload.notes, "Pickup game")
+        XCTAssertEqual(payload.focusTags, ["Lower Body", "Cardio"])
+        XCTAssertEqual(viewModel.activities.map(\.id), [activityID])
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testActivitiesRetryUsesSameClientIdentifierAfterFailure() async {
+        let activityID = UUID()
+        var submittedIDs: [UUID] = []
+        var attempt = 0
+        let savedActivity = activityFixture(id: activityID, kind: .restDay)
+        let viewModel = ActivitiesViewModel(
+            listActivities: { _ in
+                ActivityPage(activities: [savedActivity], limit: 50, offset: 0, total: 1)
+            },
+            createActivity: { payload in
+                submittedIDs.append(payload.id)
+                attempt += 1
+
+                if attempt == 1 {
+                    throw ActivityAPIError.invalidResponse
+                }
+
+                return savedActivity
+            }
+        )
+        let draft = ActivityDraft(id: activityID, kind: .restDay)
+
+        let firstAttempt = await viewModel.log(draft: draft)
+        let secondAttempt = await viewModel.log(draft: draft)
+
+        XCTAssertFalse(firstAttempt)
+        XCTAssertTrue(secondAttempt)
+        XCTAssertEqual(submittedIDs, [activityID, activityID])
+        XCTAssertEqual(viewModel.activities.map(\.id), [activityID])
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testActivitiesReconcileServerOrderingAfterBackdatedCreate() async {
+        let recentActivity = activityFixture(
+            startedAt: "2026-10-08T18:00:00.000Z",
+            endedAt: nil,
+            notes: "Recent activity"
+        )
+        let backdatedActivity = activityFixture(
+            kind: .recovery,
+            startedAt: "2026-10-01T18:00:00.000Z",
+            endedAt: nil,
+            notes: "Backdated recovery",
+            focusTags: []
+        )
+        var listCallCount = 0
+        var offsets: [Int] = []
+        let viewModel = ActivitiesViewModel(
+            listActivities: { offset in
+                offsets.append(offset)
+                listCallCount += 1
+
+                if listCallCount == 1 {
+                    return ActivityPage(
+                        activities: [recentActivity],
+                        limit: 50,
+                        offset: 0,
+                        total: 1
+                    )
+                }
+
+                return ActivityPage(
+                    activities: [recentActivity, backdatedActivity],
+                    limit: 50,
+                    offset: 0,
+                    total: 2
+                )
+            },
+            createActivity: { _ in backdatedActivity }
+        )
+
+        await viewModel.load()
+        let didLog = await viewModel.log(
+            draft: ActivityDraft(
+                id: backdatedActivity.id,
+                kind: .recovery,
+                startedAt: Date(timeIntervalSince1970: 0)
+            )
+        )
+
+        XCTAssertTrue(didLog)
+        XCTAssertEqual(offsets, [0, 0])
+        XCTAssertEqual(viewModel.activities, [recentActivity, backdatedActivity])
+        XCTAssertFalse(viewModel.canLoadMore)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
     func testAPIConfigurationRejectsBearerTokenOverRemoteHTTP() {
         let configuration = APIConfiguration(
             baseURL: URL(string: "http://fitness.example")!,
@@ -2513,6 +2787,27 @@ final class FitnessAppTests: XCTestCase {
             createdAt: "2026-10-07T12:00:00.000Z",
             updatedAt: "2026-10-07T12:00:00.000Z",
             lockVersion: 0
+        )
+    }
+
+    private func activityFixture(
+        id: UUID = UUID(),
+        kind: ActivityKind = .basketball,
+        startedAt: String = "2026-10-08T01:00:00.000Z",
+        endedAt: String? = "2026-10-08T02:00:00.000Z",
+        notes: String? = "Pickup game",
+        focusTags: [String] = ["Lower Body", "Cardio"]
+    ) -> Activity {
+        Activity(
+            id: id,
+            kind: kind,
+            startedAt: startedAt,
+            endedAt: endedAt,
+            notes: notes,
+            focusTags: focusTags,
+            source: .manual,
+            createdAt: "2026-10-08T02:00:00.000Z",
+            updatedAt: "2026-10-08T02:00:00.000Z"
         )
     }
 

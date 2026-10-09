@@ -174,6 +174,121 @@ h2 {
   grid-template-columns: minmax(280px, 0.75fr) minmax(420px, 1.25fr);
 }
 
+.activity-grid {
+  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.1fr);
+}
+
+.activity-history {
+  display: grid;
+  gap: 10px;
+}
+
+.activity-row {
+  border: 1px solid #e1e7f0;
+  border-left: 4px solid #64748b;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 12px 14px;
+}
+
+.activity-basketball {
+  border-left-color: #d94829;
+}
+
+.activity-rest_day {
+  border-left-color: #7257d5;
+}
+
+.activity-recovery {
+  border-left-color: #168b68;
+}
+
+.activity-row-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.activity-row-heading strong {
+  color: #172033;
+}
+
+.activity-row-heading span,
+.activity-row small {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.activity-row p {
+  margin: 8px 0 0;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.activity-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.activity-tags span {
+  border: 1px solid #c8d1df;
+  border-radius: 999px;
+  color: #536071;
+  font-size: 0.75rem;
+  padding: 3px 7px;
+}
+
+.activity-load-more {
+  width: 100%;
+  margin-top: 14px;
+}
+
+.activity-kind-fieldset {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.activity-kind-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.activity-kind-options button {
+  min-height: 42px;
+  border: 1px solid #c8d1df;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #536071;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 7px;
+}
+
+.activity-kind-options button.selected {
+  border-color: #1d6ee8;
+  background: #eef6ff;
+  color: #1558b0;
+  box-shadow: inset 0 0 0 1px #1d6ee8;
+}
+
+.activity-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #334155;
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-top: 8px;
+}
+
 .library-list,
 .editor-panel {
   min-width: 0;
@@ -665,6 +780,7 @@ h2 {
   .library-list,
   .editor-panel,
   .exercise-row,
+  .activity-row,
   .slot-card,
   .session-summary-grid div,
   .set-result-row,
@@ -698,6 +814,7 @@ h2 {
   }
 
   .field-label,
+  .activity-toggle,
   .exercise-row small,
   .empty-state,
   .detail-heading p,
@@ -707,6 +824,31 @@ h2 {
   .set-result-row small,
   .set-result-row span {
     color: #b7c2d4;
+  }
+
+  .activity-row-heading strong {
+    color: #f8fafc;
+  }
+
+  .activity-row-heading span,
+  .activity-row small,
+  .activity-row p,
+  .activity-tags span {
+    color: #b7c2d4;
+  }
+
+  .activity-tags span,
+  .activity-kind-options button {
+    border-color: #3d4c65;
+    background: #182132;
+    color: #b7c2d4;
+  }
+
+  .activity-kind-options button.selected {
+    border-color: #5b9af1;
+    background: #1c2d46;
+    color: #b7d4fb;
+    box-shadow: inset 0 0 0 1px #5b9af1;
   }
 
   .set-result-row > span:not(:first-child) {
@@ -771,6 +913,7 @@ h2 {
 
   .nav-sections {
     justify-content: center;
+    flex-wrap: wrap;
   }
 
   .session-controls {
@@ -804,6 +947,10 @@ h2 {
 }
 
 @media (max-width: 520px) {
+  .activity-kind-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .routine-item-editor .section-heading,
   .routine-item-editor .slot-card-header {
     align-items: stretch;
