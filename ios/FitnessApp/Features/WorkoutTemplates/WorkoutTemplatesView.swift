@@ -14,6 +14,25 @@ struct WorkoutTemplatesView: View {
                         .foregroundStyle(.red)
                 }
 
+                Section {
+                    NavigationLink {
+                        RoutinesView()
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Routines")
+                                    .font(.headline)
+                                Text("Mobility and rehab checklists")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "checklist")
+                                .foregroundStyle(.blue)
+                        }
+                    }
+                }
+
                 if let activeSession = viewModel.activeSession {
                     Section("Active Workout") {
                         Button {

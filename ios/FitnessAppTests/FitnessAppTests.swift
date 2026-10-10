@@ -342,10 +342,11 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertEqual(draft.payload.exercises[0].workoutSessionSets[0].plannedLoadValue, 70)
     }
 
-    func testSQLiteStoresActiveWorkoutAndConfiguration() throws {
+    func testSQLiteStoresActiveWorkoutConfigurationAndPendingRoutineStart() throws {
         let database = try FitnessLocalDatabase(isStoredInMemoryOnly: true)
         let activeWorkoutStore = ActiveWorkoutStore(database: database, legacyFileURL: nil)
         let configurationStore = WorkoutConfigurationStore(database: database)
+        let routineSessionStartStore = RoutineSessionStartStore(database: database)
         let template = offlineWorkoutTemplateFixture()
         let draft = try WorkoutSessionDraft(template: template)
         let activeState = ActiveWorkoutState(
@@ -354,17 +355,27 @@ final class FitnessAppTests: XCTestCase {
             pendingSessionCreation: PendingWorkoutSessionCreation(payload: draft.payload)
         )
         let configuration = WorkoutConfigurationSnapshot(templates: [template], exercises: [])
+        let pendingRoutineStart = RoutineSessionStartPayload(
+            id: UUID(),
+            routineID: UUID(),
+            startedAt: "2026-10-10T18:00:00.000Z",
+            items: []
+        )
 
         try activeWorkoutStore.save(activeState)
         try configurationStore.save(configuration)
+        try routineSessionStartStore.save(pendingRoutineStart)
 
         XCTAssertEqual(try activeWorkoutStore.load(), activeState)
         XCTAssertEqual(try configurationStore.load(), configuration)
+        XCTAssertEqual(try routineSessionStartStore.load(), pendingRoutineStart)
 
         try activeWorkoutStore.clear()
+        try routineSessionStartStore.clear()
 
         XCTAssertNil(try activeWorkoutStore.load())
         XCTAssertEqual(try configurationStore.load(), configuration)
+        XCTAssertNil(try routineSessionStartStore.load())
     }
 
     @MainActor
@@ -2008,6 +2019,860 @@ final class FitnessAppTests: XCTestCase {
         )
     }
 
+    func testRoutineAPIClientListsActiveRoutines() async throws {
+        let requestBox = URLRequestBox()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolStub.self]
+        let apiClient = RoutineAPIClient(
+            baseURL: URL(string: "https://fitness.example")!,
+            session: URLSession(configuration: configuration)
+        )
+        let routine = routineFixture()
+
+        URLProtocolStub.requestHandler = { request in
+            requestBox.request = request
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            let routines = try JSONSerialization.jsonObject(with: JSONEncoder().encode([routine]))
+            let responseData = try JSONSerialization.data(withJSONObject: [
+                "routines": routines,
+                "meta": ["limit": 100, "offset": 0, "total": 1]
+            ])
+
+            return (response, responseData)
+        }
+        defer {
+            URLProtocolStub.requestHandler = nil
+        }
+
+        let routines = try await apiClient.listRoutines()
+        let request = try XCTUnwrap(requestBox.request)
+        let queryItems = try XCTUnwrap(
+            URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+        )
+
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.url?.path, "/api/v1/routines")
+        XCTAssertEqual(
+            queryItems,
+            [
+                URLQueryItem(name: "status", value: "active"),
+                URLQueryItem(name: "limit", value: "100")
+            ]
+        )
+        XCTAssertEqual(routines, [routine])
+    }
+
+    func testRoutineAPIClientStartsSessionWithStableItemIdentifiers() async throws {
+        let routineID = UUID()
+        let routineItemID = UUID()
+        let sessionID = UUID()
+        let sessionItemID = UUID()
+        let requestBox = URLRequestBox()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolStub.self]
+        let apiClient = RoutineAPIClient(
+            baseURL: URL(string: "https://fitness.example")!,
+            session: URLSession(configuration: configuration)
+        )
+        let payload = RoutineSessionStartPayload(
+            id: sessionID,
+            routineID: routineID,
+            startedAt: "2026-10-07T12:00:00.000Z",
+            items: [
+                RoutineSessionItemStartPayload(
+                    id: sessionItemID,
+                    routineItemID: routineItemID
+                )
+            ]
+        )
+        let routineSession = routineSessionFixture(
+            id: sessionID,
+            routineID: routineID,
+            itemID: sessionItemID,
+            routineItemID: routineItemID
+        )
+
+        URLProtocolStub.requestHandler = { request in
+            requestBox.request = request
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 201,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (
+                response,
+                try JSONEncoder().encode(["routine_session": routineSession])
+            )
+        }
+        defer {
+            URLProtocolStub.requestHandler = nil
+        }
+
+        let startedSession = try await apiClient.startRoutineSession(payload: payload)
+        let request = try XCTUnwrap(requestBox.request)
+        let bodyData = try XCTUnwrap(request.httpBody ?? request.httpBodyStream?.readData())
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+        let sessionPayload = try XCTUnwrap(body["routine_session"] as? [String: Any])
+        let itemPayload = try XCTUnwrap((sessionPayload["items"] as? [[String: Any]])?.first)
+
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.path, "/api/v1/routine_sessions")
+        XCTAssertEqual(sessionPayload["id"] as? String, sessionID.uuidString)
+        XCTAssertEqual(sessionPayload["routine_id"] as? String, routineID.uuidString)
+        XCTAssertEqual(itemPayload["id"] as? String, sessionItemID.uuidString)
+        XCTAssertEqual(itemPayload["routine_item_id"] as? String, routineItemID.uuidString)
+        XCTAssertEqual(startedSession, routineSession)
+    }
+
+    func testRoutineAPIClientUpdatesChecklistItem() async throws {
+        let itemID = UUID()
+        let requestBox = URLRequestBox()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolStub.self]
+        let apiClient = RoutineAPIClient(
+            baseURL: URL(string: "https://fitness.example")!,
+            session: URLSession(configuration: configuration)
+        )
+        var item = routineSessionFixture(itemID: itemID).items[0]
+        item.completedAt = "2026-10-07T12:05:00.000Z"
+        item.lockVersion = 1
+        let payload = RoutineSessionItemUpdatePayload(
+            completed: true,
+            completedAt: item.completedAt,
+            lockVersion: 0
+        )
+
+        URLProtocolStub.requestHandler = { request in
+            requestBox.request = request
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (
+                response,
+                try JSONEncoder().encode(["routine_session_item": item])
+            )
+        }
+        defer {
+            URLProtocolStub.requestHandler = nil
+        }
+
+        let updatedItem = try await apiClient.updateRoutineSessionItem(id: itemID, payload: payload)
+        let request = try XCTUnwrap(requestBox.request)
+        let bodyData = try XCTUnwrap(request.httpBody ?? request.httpBodyStream?.readData())
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+        let itemPayload = try XCTUnwrap(body["routine_session_item"] as? [String: Any])
+
+        XCTAssertEqual(request.httpMethod, "PATCH")
+        XCTAssertEqual(request.url?.path, "/api/v1/routine_session_items/\(itemID.uuidString)")
+        XCTAssertEqual(itemPayload["completed"] as? Bool, true)
+        XCTAssertEqual(itemPayload["lock_version"] as? Int, 0)
+        XCTAssertEqual(updatedItem, item)
+    }
+
+    func testRoutineAPIClientCompletesSession() async throws {
+        let sessionID = UUID()
+        let requestBox = URLRequestBox()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolStub.self]
+        let apiClient = RoutineAPIClient(
+            baseURL: URL(string: "https://fitness.example")!,
+            session: URLSession(configuration: configuration)
+        )
+        let routineSession = routineSessionFixture(id: sessionID, status: .completed)
+        let payload = RoutineSessionCompletionPayload(
+            status: .completed,
+            completedAt: "2026-10-07T12:15:00.000Z",
+            lockVersion: 0
+        )
+
+        URLProtocolStub.requestHandler = { request in
+            requestBox.request = request
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (
+                response,
+                try JSONEncoder().encode(["routine_session": routineSession])
+            )
+        }
+        defer {
+            URLProtocolStub.requestHandler = nil
+        }
+
+        let completedSession = try await apiClient.completeRoutineSession(
+            id: sessionID,
+            payload: payload
+        )
+        let request = try XCTUnwrap(requestBox.request)
+        let bodyData = try XCTUnwrap(request.httpBody ?? request.httpBodyStream?.readData())
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+        let sessionPayload = try XCTUnwrap(body["routine_session"] as? [String: Any])
+
+        XCTAssertEqual(request.httpMethod, "PATCH")
+        XCTAssertEqual(request.url?.path, "/api/v1/routine_sessions/\(sessionID.uuidString)")
+        XCTAssertEqual(sessionPayload["status"] as? String, "completed")
+        XCTAssertEqual(sessionPayload["completed_at"] as? String, payload.completedAt)
+        XCTAssertEqual(sessionPayload["lock_version"] as? Int, 0)
+        XCTAssertEqual(completedSession, routineSession)
+    }
+
+    func testRoutineAPIClientListsCompletedSessionHistory() async throws {
+        let requestBox = URLRequestBox()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolStub.self]
+        let apiClient = RoutineAPIClient(
+            baseURL: URL(string: "https://fitness.example")!,
+            session: URLSession(configuration: configuration)
+        )
+        let routineSession = routineSessionFixture(status: .completed)
+
+        URLProtocolStub.requestHandler = { request in
+            requestBox.request = request
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            let sessions = try JSONSerialization.jsonObject(
+                with: JSONEncoder().encode([routineSession])
+            )
+            let responseData = try JSONSerialization.data(withJSONObject: [
+                "routine_sessions": sessions,
+                "meta": ["limit": 25, "offset": 25, "total": 51]
+            ])
+
+            return (response, responseData)
+        }
+        defer {
+            URLProtocolStub.requestHandler = nil
+        }
+
+        let page = try await apiClient.listRoutineSessions(
+            status: .completed,
+            limit: 25,
+            offset: 25
+        )
+        let request = try XCTUnwrap(requestBox.request)
+        let queryItems = try XCTUnwrap(
+            URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+        )
+
+        XCTAssertEqual(request.url?.path, "/api/v1/routine_sessions")
+        XCTAssertEqual(
+            queryItems,
+            [
+                URLQueryItem(name: "status", value: "completed"),
+                URLQueryItem(name: "limit", value: "25"),
+                URLQueryItem(name: "offset", value: "25")
+            ]
+        )
+        XCTAssertEqual(page.sessions, [routineSession])
+        XCTAssertEqual(page.nextOffset, 26)
+        XCTAssertTrue(page.hasNextPage)
+    }
+
+    func testActivityAPIClientListsPaginatedHistory() async throws {
+        let requestBox = URLRequestBox()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolStub.self]
+        let apiClient = ActivityAPIClient(
+            baseURL: URL(string: "https://fitness.example")!,
+            session: URLSession(configuration: configuration)
+        )
+        let activity = activityFixture()
+
+        URLProtocolStub.requestHandler = { request in
+            requestBox.request = request
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            let activities = try JSONSerialization.jsonObject(
+                with: JSONEncoder().encode([activity])
+            )
+            let responseData = try JSONSerialization.data(withJSONObject: [
+                "activities": activities,
+                "meta": ["limit": 25, "offset": 25, "total": 51]
+            ])
+
+            return (response, responseData)
+        }
+        defer {
+            URLProtocolStub.requestHandler = nil
+        }
+
+        let page = try await apiClient.listActivities(limit: 25, offset: 25)
+        let request = try XCTUnwrap(requestBox.request)
+        let queryItems = try XCTUnwrap(
+            URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+        )
+
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.url?.path, "/api/v1/activities")
+        XCTAssertEqual(
+            queryItems,
+            [
+                URLQueryItem(name: "limit", value: "25"),
+                URLQueryItem(name: "offset", value: "25")
+            ]
+        )
+        XCTAssertEqual(page.activities, [activity])
+        XCTAssertEqual(page.nextOffset, 26)
+        XCTAssertTrue(page.hasNextPage)
+    }
+
+    func testActivityAPIClientCreatesManualActivity() async throws {
+        let activityID = UUID()
+        let requestBox = URLRequestBox()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolStub.self]
+        let apiClient = ActivityAPIClient(
+            baseURL: URL(string: "https://fitness.example")!,
+            session: URLSession(configuration: configuration)
+        )
+        let payload = ActivityCreatePayload(
+            id: activityID,
+            kind: .basketball,
+            startedAt: "2026-10-08T01:00:00.000Z",
+            endedAt: "2026-10-08T02:00:00.000Z",
+            notes: "Pickup game",
+            focusTags: ["Lower Body", "Cardio"]
+        )
+        let activity = activityFixture(id: activityID)
+
+        URLProtocolStub.requestHandler = { request in
+            requestBox.request = request
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 201,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (
+                response,
+                try JSONEncoder().encode(["activity": activity])
+            )
+        }
+        defer {
+            URLProtocolStub.requestHandler = nil
+        }
+
+        let createdActivity = try await apiClient.createActivity(payload: payload)
+        let request = try XCTUnwrap(requestBox.request)
+        let bodyData = try XCTUnwrap(request.httpBody ?? request.httpBodyStream?.readData())
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+        let activityPayload = try XCTUnwrap(body["activity"] as? [String: Any])
+
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.path, "/api/v1/activities")
+        XCTAssertEqual(activityPayload["id"] as? String, activityID.uuidString)
+        XCTAssertEqual(activityPayload["kind"] as? String, "basketball")
+        XCTAssertEqual(activityPayload["started_at"] as? String, payload.startedAt)
+        XCTAssertEqual(activityPayload["ended_at"] as? String, payload.endedAt)
+        XCTAssertEqual(activityPayload["notes"] as? String, "Pickup game")
+        XCTAssertEqual(activityPayload["focus_tags"] as? [String], ["Lower Body", "Cardio"])
+        XCTAssertEqual(createdActivity, activity)
+    }
+
+    @MainActor
+    func testRoutinesLoadAvailableAndActiveSessions() async {
+        let routine = routineFixture()
+        let activeSession = routineSessionFixture(routineID: routine.id)
+        let viewModel = RoutinesViewModel(
+            listRoutines: { [routine] },
+            listActiveSessions: {
+                RoutineSessionPage(
+                    sessions: [activeSession],
+                    limit: 50,
+                    offset: 0,
+                    total: 1
+                )
+            },
+            startRoutineSession: { _ in throw RoutineAPIError.invalidResponse },
+            updateRoutineSessionItem: { _, _ in throw RoutineAPIError.invalidResponse },
+            completeRoutineSession: { _, _ in throw RoutineAPIError.invalidResponse },
+            routineSessionStartStore: routineSessionStartStore()
+        )
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.routines, [routine])
+        XCTAssertEqual(viewModel.activeSessions, [activeSession])
+        XCTAssertFalse(viewModel.isLoading)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testRoutinesStartBuildsStableSessionSnapshotIdentifiers() async throws {
+        let routineID = UUID()
+        let routineItemID = UUID()
+        let routine = routineFixture(id: routineID, itemID: routineItemID)
+        let sessionID = UUID()
+        let sessionItemID = UUID()
+        var identifiers = [sessionID, sessionItemID]
+        var capturedPayload: RoutineSessionStartPayload?
+        let startStoreBox = RoutineSessionStartStoreBox()
+        let viewModel = RoutinesViewModel(
+            listRoutines: { [] },
+            listActiveSessions: {
+                RoutineSessionPage(sessions: [], limit: 50, offset: 0, total: 0)
+            },
+            startRoutineSession: { payload in
+                capturedPayload = payload
+                return self.routineSessionFixture(
+                    id: payload.id,
+                    routineID: payload.routineID,
+                    itemID: payload.items[0].id,
+                    routineItemID: payload.items[0].routineItemID
+                )
+            },
+            updateRoutineSessionItem: { _, _ in throw RoutineAPIError.invalidResponse },
+            completeRoutineSession: { _, _ in throw RoutineAPIError.invalidResponse },
+            routineSessionStartStore: routineSessionStartStore(box: startStoreBox),
+            now: { Date(timeIntervalSince1970: 0) },
+            makeID: { identifiers.removeFirst() }
+        )
+
+        let session = await viewModel.start(routine: routine)
+        let payload = try XCTUnwrap(capturedPayload)
+
+        XCTAssertEqual(payload.id, sessionID)
+        XCTAssertEqual(payload.routineID, routineID)
+        XCTAssertEqual(payload.startedAt, "1970-01-01T00:00:00.000Z")
+        XCTAssertEqual(payload.items[0].id, sessionItemID)
+        XCTAssertEqual(payload.items[0].routineItemID, routineItemID)
+        XCTAssertEqual(session?.id, sessionID)
+        XCTAssertEqual(viewModel.activeSessions.map(\.id), [sessionID])
+        XCTAssertNil(startStoreBox.payload)
+    }
+
+    @MainActor
+    func testRoutinesRetryPendingStartWithSameIdentifiers() async throws {
+        let routine = routineFixture()
+        let sessionID = UUID()
+        let sessionItemID = UUID()
+        var identifiers = [sessionID, sessionItemID]
+        var submittedPayloads: [RoutineSessionStartPayload] = []
+        let startStoreBox = RoutineSessionStartStoreBox()
+        let viewModel = RoutinesViewModel(
+            listRoutines: { [] },
+            listActiveSessions: {
+                RoutineSessionPage(sessions: [], limit: 50, offset: 0, total: 0)
+            },
+            startRoutineSession: { payload in
+                submittedPayloads.append(payload)
+                if submittedPayloads.count == 1 {
+                    throw RoutineAPIError.requestFailed(statusCode: 500)
+                }
+
+                return self.routineSessionFixture(
+                    id: payload.id,
+                    routineID: payload.routineID,
+                    itemID: payload.items[0].id,
+                    routineItemID: payload.items[0].routineItemID
+                )
+            },
+            updateRoutineSessionItem: { _, _ in throw RoutineAPIError.invalidResponse },
+            completeRoutineSession: { _, _ in throw RoutineAPIError.invalidResponse },
+            routineSessionStartStore: routineSessionStartStore(box: startStoreBox),
+            now: { Date(timeIntervalSince1970: 0) },
+            makeID: { identifiers.removeFirst() }
+        )
+
+        let firstSession = await viewModel.start(routine: routine)
+        let pendingPayload = try XCTUnwrap(startStoreBox.payload)
+        let retriedSession = await viewModel.start(routine: routine)
+
+        XCTAssertNil(firstSession)
+        XCTAssertEqual(submittedPayloads, [pendingPayload, pendingPayload])
+        XCTAssertEqual(retriedSession?.id, sessionID)
+        XCTAssertNil(startStoreBox.payload)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testRoutinesDiscardRejectedStartBeforeStartingAnotherRoutine() async throws {
+        let rejectedRoutine = routineFixture()
+        let nextRoutine = routineFixture()
+        let rejectedSessionID = UUID()
+        let rejectedItemID = UUID()
+        let nextSessionID = UUID()
+        let nextItemID = UUID()
+        var identifiers = [rejectedSessionID, rejectedItemID, nextSessionID, nextItemID]
+        var submittedPayloads: [RoutineSessionStartPayload] = []
+        let startStoreBox = RoutineSessionStartStoreBox()
+        let viewModel = RoutinesViewModel(
+            listRoutines: { [] },
+            listActiveSessions: {
+                RoutineSessionPage(sessions: [], limit: 50, offset: 0, total: 0)
+            },
+            startRoutineSession: { payload in
+                submittedPayloads.append(payload)
+                if payload.routineID == rejectedRoutine.id {
+                    throw RoutineAPIError.requestFailed(statusCode: 422)
+                }
+
+                return self.routineSessionFixture(
+                    id: payload.id,
+                    routineID: payload.routineID,
+                    itemID: payload.items[0].id,
+                    routineItemID: payload.items[0].routineItemID
+                )
+            },
+            updateRoutineSessionItem: { _, _ in throw RoutineAPIError.invalidResponse },
+            completeRoutineSession: { _, _ in throw RoutineAPIError.invalidResponse },
+            routineSessionStartStore: routineSessionStartStore(box: startStoreBox),
+            now: { Date(timeIntervalSince1970: 0) },
+            makeID: { identifiers.removeFirst() }
+        )
+
+        let rejectedSession = await viewModel.start(routine: rejectedRoutine)
+        let nextSession = await viewModel.start(routine: nextRoutine)
+
+        XCTAssertNil(rejectedSession)
+        XCTAssertEqual(submittedPayloads.map(\.id), [rejectedSessionID, nextSessionID])
+        XCTAssertEqual(nextSession?.id, nextSessionID)
+        XCTAssertNil(startStoreBox.payload)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testRoutinesLoadClearsReconciledPendingStart() async {
+        let routine = routineFixture()
+        let activeSession = routineSessionFixture(routineID: routine.id)
+        let pendingPayload = RoutineSessionStartPayload(
+            id: activeSession.id,
+            routineID: routine.id,
+            startedAt: activeSession.startedAt,
+            items: activeSession.items.compactMap { item in
+                item.routineItemID.map {
+                    RoutineSessionItemStartPayload(id: item.id, routineItemID: $0)
+                }
+            }
+        )
+        let startStoreBox = RoutineSessionStartStoreBox(payload: pendingPayload)
+        let viewModel = RoutinesViewModel(
+            listRoutines: { [routine] },
+            listActiveSessions: {
+                RoutineSessionPage(
+                    sessions: [activeSession],
+                    limit: 50,
+                    offset: 0,
+                    total: 1
+                )
+            },
+            startRoutineSession: { _ in throw RoutineAPIError.invalidResponse },
+            updateRoutineSessionItem: { _, _ in throw RoutineAPIError.invalidResponse },
+            completeRoutineSession: { _, _ in throw RoutineAPIError.invalidResponse },
+            routineSessionStartStore: routineSessionStartStore(box: startStoreBox)
+        )
+
+        await viewModel.load()
+
+        XCTAssertNil(startStoreBox.payload)
+        XCTAssertEqual(viewModel.activeSessions, [activeSession])
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testRoutinesToggleMergesServerChecklistItem() async throws {
+        let activeSession = routineSessionFixture()
+        let item = try XCTUnwrap(activeSession.items.first)
+        var capturedPayload: RoutineSessionItemUpdatePayload?
+        var completedItem = item
+        completedItem.completedAt = "2026-10-07T12:05:00.000Z"
+        completedItem.lockVersion = 1
+        let viewModel = RoutinesViewModel(
+            listRoutines: { [] },
+            listActiveSessions: {
+                RoutineSessionPage(
+                    sessions: [activeSession],
+                    limit: 50,
+                    offset: 0,
+                    total: 1
+                )
+            },
+            startRoutineSession: { _ in throw RoutineAPIError.invalidResponse },
+            updateRoutineSessionItem: { id, payload in
+                XCTAssertEqual(id, item.id)
+                capturedPayload = payload
+                return completedItem
+            },
+            completeRoutineSession: { _, _ in throw RoutineAPIError.invalidResponse },
+            routineSessionStartStore: routineSessionStartStore(),
+            now: { Date(timeIntervalSince1970: 0) }
+        )
+        await viewModel.load()
+
+        await viewModel.toggle(itemID: item.id, in: activeSession.id)
+        let payload = try XCTUnwrap(capturedPayload)
+
+        XCTAssertTrue(payload.completed)
+        XCTAssertEqual(payload.completedAt, "1970-01-01T00:00:00.000Z")
+        XCTAssertEqual(payload.lockVersion, 0)
+        XCTAssertEqual(viewModel.activeSessions[0].items[0], completedItem)
+        XCTAssertTrue(viewModel.updatingItemIDs.isEmpty)
+    }
+
+    @MainActor
+    func testRoutinesCompleteCheckedSessionAndRemoveItFromActiveList() async throws {
+        var activeSession = routineSessionFixture()
+        activeSession.items[0].completedAt = "2026-10-07T12:05:00.000Z"
+        activeSession.items[0].lockVersion = 1
+        var completedSession = activeSession
+        completedSession.status = .completed
+        completedSession.completedAt = "2026-10-07T12:15:00.000Z"
+        completedSession.lockVersion = 1
+        var capturedPayload: RoutineSessionCompletionPayload?
+        let viewModel = RoutinesViewModel(
+            listRoutines: { [] },
+            listActiveSessions: {
+                RoutineSessionPage(
+                    sessions: [activeSession],
+                    limit: 50,
+                    offset: 0,
+                    total: 1
+                )
+            },
+            startRoutineSession: { _ in throw RoutineAPIError.invalidResponse },
+            updateRoutineSessionItem: { _, _ in throw RoutineAPIError.invalidResponse },
+            completeRoutineSession: { id, payload in
+                XCTAssertEqual(id, activeSession.id)
+                capturedPayload = payload
+                return completedSession
+            },
+            routineSessionStartStore: routineSessionStartStore(),
+            now: { Date(timeIntervalSince1970: 0) }
+        )
+        await viewModel.load()
+
+        let didComplete = await viewModel.complete(sessionID: activeSession.id)
+        let payload = try XCTUnwrap(capturedPayload)
+
+        XCTAssertTrue(didComplete)
+        XCTAssertEqual(payload.status, .completed)
+        XCTAssertEqual(payload.completedAt, "1970-01-01T00:00:00.000Z")
+        XCTAssertEqual(payload.lockVersion, activeSession.lockVersion)
+        XCTAssertTrue(viewModel.activeSessions.isEmpty)
+    }
+
+    @MainActor
+    func testRoutineHistoryLoadsSubsequentPagesWithoutDuplicates() async {
+        let firstSession = routineSessionFixture(status: .completed)
+        let secondSession = routineSessionFixture(status: .completed)
+        var offsets: [Int] = []
+        let viewModel = RoutineHistoryViewModel { offset in
+            offsets.append(offset)
+            if offset == 0 {
+                return RoutineSessionPage(
+                    sessions: [firstSession],
+                    limit: 1,
+                    offset: 0,
+                    total: 2
+                )
+            }
+
+            return RoutineSessionPage(
+                sessions: [firstSession, secondSession],
+                limit: 1,
+                offset: 1,
+                total: 2
+            )
+        }
+
+        await viewModel.load()
+        await viewModel.loadMore()
+
+        XCTAssertEqual(offsets, [0, 1])
+        XCTAssertEqual(viewModel.sessions, [firstSession, secondSession])
+        XCTAssertFalse(viewModel.canLoadMore)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testActivitiesLoadSubsequentPagesWithoutDuplicates() async {
+        let firstActivity = activityFixture()
+        let secondActivity = activityFixture(kind: .recovery)
+        var offsets: [Int] = []
+        let viewModel = ActivitiesViewModel(
+            listActivities: { offset in
+                offsets.append(offset)
+                if offset == 0 {
+                    return ActivityPage(
+                        activities: [firstActivity],
+                        limit: 1,
+                        offset: 0,
+                        total: 2
+                    )
+                }
+
+                return ActivityPage(
+                    activities: [firstActivity, secondActivity],
+                    limit: 1,
+                    offset: 1,
+                    total: 2
+                )
+            },
+            createActivity: { _ in throw ActivityAPIError.invalidResponse }
+        )
+
+        await viewModel.load()
+        await viewModel.loadMore()
+
+        XCTAssertEqual(offsets, [0, 1])
+        XCTAssertEqual(viewModel.activities, [firstActivity, secondActivity])
+        XCTAssertFalse(viewModel.canLoadMore)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testActivitiesLogNormalizesManualEntry() async throws {
+        let activityID = UUID()
+        var capturedPayload: ActivityCreatePayload?
+        let savedActivity = activityFixture(
+            id: activityID,
+            kind: .basketball,
+            startedAt: "1970-01-01T00:00:00.000Z",
+            endedAt: "1970-01-01T01:00:00.000Z",
+            notes: "Pickup game",
+            focusTags: ["Lower Body", "Cardio"]
+        )
+        let viewModel = ActivitiesViewModel(
+            listActivities: { _ in
+                ActivityPage(activities: [savedActivity], limit: 50, offset: 0, total: 1)
+            },
+            createActivity: { payload in
+                capturedPayload = payload
+                return savedActivity
+            }
+        )
+        let draft = ActivityDraft(
+            id: activityID,
+            kind: .basketball,
+            startedAt: Date(timeIntervalSince1970: 0),
+            endedAt: Date(timeIntervalSince1970: 3_600),
+            notes: "  Pickup game  ",
+            focusTags: " Lower Body, Cardio, Lower Body, "
+        )
+
+        let didLog = await viewModel.log(draft: draft)
+        let payload = try XCTUnwrap(capturedPayload)
+
+        XCTAssertTrue(didLog)
+        XCTAssertEqual(payload.id, activityID)
+        XCTAssertEqual(payload.kind, .basketball)
+        XCTAssertEqual(payload.startedAt, "1970-01-01T00:00:00.000Z")
+        XCTAssertEqual(payload.endedAt, "1970-01-01T01:00:00.000Z")
+        XCTAssertEqual(payload.notes, "Pickup game")
+        XCTAssertEqual(payload.focusTags, ["Lower Body", "Cardio"])
+        XCTAssertEqual(viewModel.activities.map(\.id), [activityID])
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testActivitiesRetryUsesSameClientIdentifierAfterFailure() async {
+        let activityID = UUID()
+        var submittedIDs: [UUID] = []
+        var attempt = 0
+        let savedActivity = activityFixture(id: activityID, kind: .restDay)
+        let viewModel = ActivitiesViewModel(
+            listActivities: { _ in
+                ActivityPage(activities: [savedActivity], limit: 50, offset: 0, total: 1)
+            },
+            createActivity: { payload in
+                submittedIDs.append(payload.id)
+                attempt += 1
+
+                if attempt == 1 {
+                    throw ActivityAPIError.invalidResponse
+                }
+
+                return savedActivity
+            }
+        )
+        let draft = ActivityDraft(id: activityID, kind: .restDay)
+
+        let firstAttempt = await viewModel.log(draft: draft)
+        let secondAttempt = await viewModel.log(draft: draft)
+
+        XCTAssertFalse(firstAttempt)
+        XCTAssertTrue(secondAttempt)
+        XCTAssertEqual(submittedIDs, [activityID, activityID])
+        XCTAssertEqual(viewModel.activities.map(\.id), [activityID])
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testActivitiesReconcileServerOrderingAfterBackdatedCreate() async {
+        let recentActivity = activityFixture(
+            startedAt: "2026-10-08T18:00:00.000Z",
+            endedAt: nil,
+            notes: "Recent activity"
+        )
+        let backdatedActivity = activityFixture(
+            kind: .recovery,
+            startedAt: "2026-10-01T18:00:00.000Z",
+            endedAt: nil,
+            notes: "Backdated recovery",
+            focusTags: []
+        )
+        var listCallCount = 0
+        var offsets: [Int] = []
+        let viewModel = ActivitiesViewModel(
+            listActivities: { offset in
+                offsets.append(offset)
+                listCallCount += 1
+
+                if listCallCount == 1 {
+                    return ActivityPage(
+                        activities: [recentActivity],
+                        limit: 50,
+                        offset: 0,
+                        total: 1
+                    )
+                }
+
+                return ActivityPage(
+                    activities: [recentActivity, backdatedActivity],
+                    limit: 50,
+                    offset: 0,
+                    total: 2
+                )
+            },
+            createActivity: { _ in backdatedActivity }
+        )
+
+        await viewModel.load()
+        let didLog = await viewModel.log(
+            draft: ActivityDraft(
+                id: backdatedActivity.id,
+                kind: .recovery,
+                startedAt: Date(timeIntervalSince1970: 0)
+            )
+        )
+
+        XCTAssertTrue(didLog)
+        XCTAssertEqual(offsets, [0, 0])
+        XCTAssertEqual(viewModel.activities, [recentActivity, backdatedActivity])
+        XCTAssertFalse(viewModel.canLoadMore)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
     func testAPIConfigurationRejectsBearerTokenOverRemoteHTTP() {
         let configuration = APIConfiguration(
             baseURL: URL(string: "http://fitness.example")!,
@@ -2024,6 +2889,118 @@ final class FitnessAppTests: XCTestCase {
             load: { box.state },
             save: { box.state = $0 },
             clear: { box.state = nil }
+        )
+    }
+
+    private func routineSessionStartStore(
+        box: RoutineSessionStartStoreBox = RoutineSessionStartStoreBox()
+    ) -> RoutineSessionStartStore {
+        RoutineSessionStartStore(
+            load: { box.payload },
+            save: { box.payload = $0 },
+            clear: { box.payload = nil }
+        )
+    }
+
+    private func routineFixture(
+        id routineID: UUID = UUID(),
+        itemID: UUID = UUID(),
+        exerciseID: UUID = UUID()
+    ) -> Routine {
+        Routine(
+            id: routineID,
+            name: "Daily Mobility",
+            notes: "Move slowly.",
+            archivedAt: nil,
+            items: [
+                RoutineItem(
+                    id: itemID,
+                    position: 1,
+                    exerciseID: exerciseID,
+                    exercise: Exercise(
+                        id: exerciseID,
+                        name: "Dead Bug",
+                        primaryMuscleGroup: "Core",
+                        secondaryMuscleGroups: [],
+                        loadType: .none,
+                        notes: nil,
+                        externalURL: nil,
+                        archivedAt: nil,
+                        createdAt: "2026-10-07T12:00:00.000Z",
+                        updatedAt: "2026-10-07T12:00:00.000Z",
+                        lockVersion: 0
+                    ),
+                    targetMode: .reps,
+                    sets: 3,
+                    targetReps: 8,
+                    targetDurationSeconds: nil,
+                    notesOverride: "Each side",
+                    createdAt: "2026-10-07T12:00:00.000Z",
+                    updatedAt: "2026-10-07T12:00:00.000Z"
+                )
+            ],
+            createdAt: "2026-10-07T12:00:00.000Z",
+            updatedAt: "2026-10-07T12:00:00.000Z",
+            lockVersion: 0
+        )
+    }
+
+    private func activityFixture(
+        id: UUID = UUID(),
+        kind: ActivityKind = .basketball,
+        startedAt: String = "2026-10-08T01:00:00.000Z",
+        endedAt: String? = "2026-10-08T02:00:00.000Z",
+        notes: String? = "Pickup game",
+        focusTags: [String] = ["Lower Body", "Cardio"]
+    ) -> Activity {
+        Activity(
+            id: id,
+            kind: kind,
+            startedAt: startedAt,
+            endedAt: endedAt,
+            notes: notes,
+            focusTags: focusTags,
+            source: .manual,
+            createdAt: "2026-10-08T02:00:00.000Z",
+            updatedAt: "2026-10-08T02:00:00.000Z"
+        )
+    }
+
+    private func routineSessionFixture(
+        id sessionID: UUID = UUID(),
+        routineID: UUID = UUID(),
+        itemID: UUID = UUID(),
+        routineItemID: UUID = UUID(),
+        status: RoutineSessionStatus = .active
+    ) -> RoutineSession {
+        let completedAt = status == .completed ? "2026-10-07T12:15:00.000Z" : nil
+
+        return RoutineSession(
+            id: sessionID,
+            routineID: routineID,
+            routineName: "Daily Mobility",
+            status: status,
+            startedAt: "2026-10-07T12:00:00.000Z",
+            completedAt: completedAt,
+            items: [
+                RoutineSessionItem(
+                    id: itemID,
+                    routineItemID: routineItemID,
+                    exerciseID: UUID(),
+                    position: 1,
+                    exerciseName: "Dead Bug",
+                    targetMode: .reps,
+                    sets: 3,
+                    targetReps: 8,
+                    targetDurationSeconds: nil,
+                    notes: "Each side",
+                    completedAt: completedAt,
+                    lockVersion: status == .completed ? 1 : 0
+                )
+            ],
+            createdAt: "2026-10-07T12:00:00.000Z",
+            updatedAt: completedAt ?? "2026-10-07T12:00:00.000Z",
+            lockVersion: status == .completed ? 1 : 0
         )
     }
 
@@ -2236,6 +3213,28 @@ final class FitnessAppTests: XCTestCase {
 
 private enum ActiveWorkoutStoreFailure: Error {
     case failed
+}
+
+private final class RoutineSessionStartStoreBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedPayload: RoutineSessionStartPayload?
+
+    var payload: RoutineSessionStartPayload? {
+        get {
+            lock.withLock {
+                storedPayload
+            }
+        }
+        set {
+            lock.withLock {
+                storedPayload = newValue
+            }
+        }
+    }
+
+    init(payload: RoutineSessionStartPayload? = nil) {
+        storedPayload = payload
+    }
 }
 
 private final class ActiveWorkoutStoreBox: @unchecked Sendable {

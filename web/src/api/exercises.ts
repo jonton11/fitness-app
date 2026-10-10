@@ -46,6 +46,11 @@ export type ApiError = {
 
 type ExerciseListResponse = {
   exercises: Exercise[]
+  meta: {
+    limit: number
+    offset: number
+    total: number
+  }
 }
 
 type ExerciseResponse = {
@@ -60,6 +65,35 @@ export async function listExercises(
   query: string,
   status: ExerciseStatus,
 ): Promise<Exercise[]> {
+  const response = await fetchExercisePage(query, status)
+  return response.exercises
+}
+
+export async function listAllExercises(
+  query: string,
+  status: ExerciseStatus,
+): Promise<Exercise[]> {
+  const exercises: Exercise[] = []
+  const limit = 100
+  let offset = 0
+
+  while (true) {
+    const response = await fetchExercisePage(query, status, { limit, offset })
+    exercises.push(...response.exercises)
+    offset += response.exercises.length
+
+    const total = response.meta?.total ?? offset
+    if (response.exercises.length === 0 || offset >= total) {
+      return exercises
+    }
+  }
+}
+
+async function fetchExercisePage(
+  query: string,
+  status: ExerciseStatus,
+  pagination?: { limit: number; offset: number },
+): Promise<ExerciseListResponse> {
   const params = new URLSearchParams()
 
   params.set('status', status)
@@ -68,9 +102,13 @@ export async function listExercises(
     params.set('q', query.trim())
   }
 
+  if (pagination) {
+    params.set('limit', String(pagination.limit))
+    params.set('offset', String(pagination.offset))
+  }
+
   const path = `/api/v1/exercises${params.size ? `?${params.toString()}` : ''}`
-  const response = await fetchJson<ExerciseListResponse>(path)
-  return response.exercises
+  return fetchJson<ExerciseListResponse>(path)
 }
 
 export async function createExercise(
