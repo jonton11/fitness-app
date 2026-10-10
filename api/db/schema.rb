@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_10_010000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_10_020000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -227,6 +227,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_010000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["started_at"], name: "index_workout_sessions_on_started_at"
+    t.index ["status", "completed_at"], name: "index_workout_sessions_on_status_and_completed_at"
     t.index ["status"], name: "index_workout_sessions_on_status"
     t.index ["workout_template_id"], name: "index_workout_sessions_on_workout_template_id"
     t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'completed'::character varying, 'canceled'::character varying]::text[])", name: "workout_sessions_status_valid"
