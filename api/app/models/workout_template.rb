@@ -14,5 +14,6 @@ class WorkoutTemplate < ApplicationRecord
   def normalize_fields
     self.name = name.to_s.strip.presence
     self.notes = notes.to_s.strip.presence
+    self.focus_tags = Array(focus_tags).map { |tag| tag.to_s.strip }.reject(&:blank?).uniq
   end
 end

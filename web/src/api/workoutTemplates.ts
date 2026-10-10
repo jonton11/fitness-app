@@ -57,6 +57,7 @@ export type WorkoutTemplate = {
   id: string
   name: string
   notes: string | null
+  focus_tags: string[]
   archived_at: string | null
   created_at: string
   updated_at: string
@@ -67,6 +68,7 @@ export type WorkoutTemplate = {
 export type WorkoutTemplatePayload = {
   name: string
   notes: string | null
+  focus_tags: string[]
   archived_at?: string | null
   lock_version?: number
   slots?: WorkoutTemplateSlotPayload[]

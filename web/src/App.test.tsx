@@ -51,6 +51,7 @@ const upperTemplate: WorkoutTemplate = {
   id: 'template-1',
   name: 'Upper Body',
   notes: 'Main upper body day.',
+  focus_tags: ['Chest', 'Back', 'Shoulders'],
   archived_at: null,
   created_at: '2026-10-01T00:00:00.000Z',
   updated_at: '2026-10-01T00:00:00.000Z',
@@ -520,6 +521,9 @@ describe('App', () => {
     fireEvent.change(screen.getByLabelText('Notes'), {
       target: { value: 'Core and arm accessories.' },
     })
+    fireEvent.change(screen.getByLabelText('Focus tags'), {
+      target: { value: 'Core, Arms, Core' },
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {
@@ -532,6 +536,7 @@ describe('App', () => {
     expect(lastWorkoutTemplateRequest()).toMatchObject({
       name: 'Core & Arms',
       notes: 'Core and arm accessories.',
+      focus_tags: ['Core', 'Arms'],
     })
     expect(await screen.findByText('Core & Arms')).toBeInTheDocument()
   })

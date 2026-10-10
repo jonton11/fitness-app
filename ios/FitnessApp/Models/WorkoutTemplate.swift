@@ -4,6 +4,7 @@ struct WorkoutTemplate: Codable, Equatable, Identifiable {
     let id: UUID
     var name: String
     var notes: String?
+    var focusTags: [String] = []
     var archivedAt: String?
     var createdAt: String
     var updatedAt: String
@@ -14,11 +15,27 @@ struct WorkoutTemplate: Codable, Equatable, Identifiable {
         case id
         case name
         case notes
+        case focusTags = "focus_tags"
         case archivedAt = "archived_at"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case lockVersion = "lock_version"
         case slots
+    }
+}
+
+extension WorkoutTemplate {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        focusTags = try container.decodeIfPresent([String].self, forKey: .focusTags) ?? []
+        archivedAt = try container.decodeIfPresent(String.self, forKey: .archivedAt)
+        createdAt = try container.decode(String.self, forKey: .createdAt)
+        updatedAt = try container.decode(String.self, forKey: .updatedAt)
+        lockVersion = try container.decode(Int.self, forKey: .lockVersion)
+        slots = try container.decode([WorkoutTemplateSlot].self, forKey: .slots)
     }
 }
 
@@ -176,6 +193,7 @@ enum LoadStrategy: String, CaseIterable, Codable, Identifiable {
 struct WorkoutTemplatePayload: Codable, Equatable {
     var name: String
     var notes: String?
+    var focusTags: [String]
     var archivedAt: String?
     var lockVersion: Int?
     var slots: [WorkoutTemplateSlotPayload]
@@ -183,6 +201,7 @@ struct WorkoutTemplatePayload: Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case name
         case notes
+        case focusTags = "focus_tags"
         case archivedAt = "archived_at"
         case lockVersion = "lock_version"
         case slots

@@ -95,6 +95,7 @@ class WorkoutTemplatesApiTest < ActionDispatch::IntegrationTest
     template = response.parsed_body.fetch("workout_template")
     assert_equal "Upper Body", template.fetch("name")
     assert_equal "Main push/pull upper body day.", template.fetch("notes")
+    assert_equal [ "Chest", "Back" ], template.fetch("focus_tags")
     assert_equal 0, template.fetch("lock_version")
 
     slot = template.fetch("slots").first
@@ -275,6 +276,7 @@ class WorkoutTemplatesApiTest < ActionDispatch::IntegrationTest
       workout_template: {
         name: "Upper Body",
         notes: "Main push/pull upper body day.",
+        focus_tags: [ " Chest ", "", "Chest", "Back" ],
         slots: [
           {
             position: 1,

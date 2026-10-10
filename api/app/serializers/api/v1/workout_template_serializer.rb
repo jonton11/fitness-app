@@ -11,6 +11,7 @@ module Api
           id: record.id,
           name: record.name,
           notes: record.notes,
+          focus_tags: record.focus_tags,
           archived_at: serialize_time(record.archived_at),
           created_at: serialize_time(record.created_at),
           updated_at: serialize_time(record.updated_at),

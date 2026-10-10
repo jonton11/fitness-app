@@ -32,6 +32,7 @@ final class FitnessAppTests: XCTestCase {
         var form = WorkoutTemplateFormState()
         form.name = "Upper Body"
         form.notes = "  "
+        form.focusTags = " Chest, Back, Chest "
         form.slots = [
             WorkoutTemplateSlotFormState(defaultExerciseID: exerciseID)
         ]
@@ -50,6 +51,7 @@ final class FitnessAppTests: XCTestCase {
 
         XCTAssertEqual(payload.name, "Upper Body")
         XCTAssertNil(payload.notes)
+        XCTAssertEqual(payload.focusTags, ["Chest", "Back"])
         XCTAssertEqual(payload.lockVersion, 2)
         XCTAssertEqual(payload.slots.count, 1)
         XCTAssertEqual(payload.slots[0].label, "Upper Chest Press")

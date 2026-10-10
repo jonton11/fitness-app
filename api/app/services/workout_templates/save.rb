@@ -24,7 +24,7 @@ module WorkoutTemplates
     attr_reader :template, :payload
 
     def template_attributes
-      payload.slice(:name, :notes, :archived_at, :lock_version)
+      payload.slice(:name, :notes, :focus_tags, :archived_at, :lock_version)
     end
 
     def sync_slots!

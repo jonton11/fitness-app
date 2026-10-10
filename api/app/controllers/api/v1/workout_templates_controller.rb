@@ -106,6 +106,7 @@ module Api
           :notes,
           :archived_at,
           :lock_version,
+          { focus_tags: [] },
           slots: [
             :id,
             :position,

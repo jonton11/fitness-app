@@ -28,6 +28,9 @@ struct WorkoutTemplateFormView: View {
 
                     TextField("Notes", text: $form.notes, axis: .vertical)
                         .lineLimit(4, reservesSpace: true)
+
+                    TextField("Focus tags", text: $form.focusTags)
+                        .textInputAutocapitalization(.words)
                 }
 
                 Section("Slots") {
