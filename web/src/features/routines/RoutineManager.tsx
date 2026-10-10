@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 
-import { listExercises } from '../../api/exercises'
+import { listAllExercises } from '../../api/exercises'
 import type { Exercise } from '../../api/exercises'
 import {
   RoutineApiError,
@@ -78,7 +78,7 @@ export function RoutineManager() {
   useEffect(() => {
     let isCurrent = true
 
-    listExercises('', 'active')
+    listAllExercises('', 'active')
       .then((nextExercises) => {
         if (isCurrent) {
           setExercises(nextExercises)
@@ -180,13 +180,7 @@ export function RoutineManager() {
         ? await updateRoutine(selectedRoutine.id, payload)
         : await createRoutine(payload)
 
-      setRoutines((current) =>
-        [
-          ...current.filter((routine) => routine.id !== savedRoutine.id),
-          savedRoutine,
-        ].sort((left, right) => left.name.localeCompare(right.name)),
-      )
-      selectRoutine(savedRoutine)
+      reconcileSavedRoutine(savedRoutine)
     } catch (error) {
       setErrors(errorMessages(error, 'Could not save routine.'))
     } finally {
@@ -218,14 +212,32 @@ export function RoutineManager() {
           : new Date().toISOString(),
         lock_version: selectedRoutine.lock_version,
       })
-      setRoutines((current) =>
-        current.filter((routine) => routine.id !== savedRoutine.id),
-      )
-      startNewRoutine()
+      reconcileSavedRoutine(savedRoutine)
     } catch (error) {
       setErrors(errorMessages(error, `Could not ${action} routine.`))
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  function reconcileSavedRoutine(savedRoutine: Routine) {
+    const isVisible = routineMatchesFilters(savedRoutine, query, status)
+
+    setRoutines((current) => {
+      const otherRoutines = current.filter(
+        (routine) => routine.id !== savedRoutine.id,
+      )
+      return isVisible
+        ? [...otherRoutines, savedRoutine].sort((left, right) =>
+            left.name.localeCompare(right.name),
+          )
+        : otherRoutines
+    })
+
+    if (isVisible) {
+      selectRoutine(savedRoutine)
+    } else {
+      startNewRoutine()
     }
   }
 
@@ -421,6 +433,25 @@ export function RoutineManager() {
         </div>
       </section>
     </main>
+  )
+}
+
+function routineMatchesFilters(
+  routine: Routine,
+  query: string,
+  status: RoutineStatus,
+) {
+  const matchesStatus =
+    status === 'all' ||
+    (status === 'archived'
+      ? routine.archived_at !== null
+      : routine.archived_at === null)
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+
+  return (
+    matchesStatus &&
+    (!normalizedQuery ||
+      routine.name.toLocaleLowerCase().includes(normalizedQuery))
   )
 }
 
