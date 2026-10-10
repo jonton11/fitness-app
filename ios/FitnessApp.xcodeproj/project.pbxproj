@@ -43,6 +43,7 @@
 		0A0000010000000000000033 /* RoutinesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000033 /* RoutinesView.swift */; };
 		0A0000010000000000000034 /* RoutineHistoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000034 /* RoutineHistoryViewModel.swift */; };
 		0A0000010000000000000035 /* RoutineHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000035 /* RoutineHistoryView.swift */; };
+		0A0000010000000000000040 /* RoutineSessionStartStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000040 /* RoutineSessionStartStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -94,6 +95,7 @@
 		0A0000020000000000000033 /* RoutinesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutinesView.swift; sourceTree = "<group>"; };
 		0A0000020000000000000034 /* RoutineHistoryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineHistoryViewModel.swift; sourceTree = "<group>"; };
 		0A0000020000000000000035 /* RoutineHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineHistoryView.swift; sourceTree = "<group>"; };
+		0A0000020000000000000040 /* RoutineSessionStartStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineSessionStartStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -190,6 +192,7 @@
 				0A000002000000000000002C /* APICredentialsStorage.swift */,
 				0A0000020000000000000027 /* FitnessLocalDatabase.swift */,
 				0A0000020000000000000022 /* ActiveWorkoutStore.swift */,
+				0A0000020000000000000040 /* RoutineSessionStartStore.swift */,
 				0A0000020000000000000028 /* WorkoutConfigurationStore.swift */,
 			);
 			path = Local;
@@ -403,6 +406,7 @@
 				0A0000010000000000000033 /* RoutinesView.swift in Sources */,
 				0A0000010000000000000034 /* RoutineHistoryViewModel.swift in Sources */,
 				0A0000010000000000000035 /* RoutineHistoryView.swift in Sources */,
+				0A0000010000000000000040 /* RoutineSessionStartStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

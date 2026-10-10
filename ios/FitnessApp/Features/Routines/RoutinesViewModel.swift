@@ -15,11 +15,13 @@ final class RoutinesViewModel: ObservableObject {
     private let startRoutineSession: (RoutineSessionStartPayload) async throws -> RoutineSession
     private let updateRoutineSessionItem: (UUID, RoutineSessionItemUpdatePayload) async throws -> RoutineSessionItem
     private let completeRoutineSession: (UUID, RoutineSessionCompletionPayload) async throws -> RoutineSession
+    private let routineSessionStartStore: RoutineSessionStartStore
     private let now: () -> Date
     private let makeID: () -> UUID
 
     init(
         apiClient: RoutineAPIClient = .live,
+        routineSessionStartStore: RoutineSessionStartStore = .live,
         now: @escaping () -> Date = Date.init,
         makeID: @escaping () -> UUID = UUID.init
     ) {
@@ -38,6 +40,7 @@ final class RoutinesViewModel: ObservableObject {
         completeRoutineSession = { id, payload in
             try await apiClient.completeRoutineSession(id: id, payload: payload)
         }
+        self.routineSessionStartStore = routineSessionStartStore
         self.now = now
         self.makeID = makeID
     }
@@ -48,6 +51,7 @@ final class RoutinesViewModel: ObservableObject {
         startRoutineSession: @escaping (RoutineSessionStartPayload) async throws -> RoutineSession,
         updateRoutineSessionItem: @escaping (UUID, RoutineSessionItemUpdatePayload) async throws -> RoutineSessionItem,
         completeRoutineSession: @escaping (UUID, RoutineSessionCompletionPayload) async throws -> RoutineSession,
+        routineSessionStartStore: RoutineSessionStartStore,
         now: @escaping () -> Date = Date.init,
         makeID: @escaping () -> UUID = UUID.init
     ) {
@@ -56,6 +60,7 @@ final class RoutinesViewModel: ObservableObject {
         self.startRoutineSession = startRoutineSession
         self.updateRoutineSessionItem = updateRoutineSessionItem
         self.completeRoutineSession = completeRoutineSession
+        self.routineSessionStartStore = routineSessionStartStore
         self.now = now
         self.makeID = makeID
     }
@@ -75,35 +80,49 @@ final class RoutinesViewModel: ObservableObject {
             routines = try await listRoutines()
             let activePage = try await listActiveSessions()
             self.activeSessions = activePage.sessions
+            try clearReconciledPendingStart()
         } catch {
             errorMessage = "Could not load routines."
         }
     }
 
     func start(routine: Routine) async -> RoutineSession? {
+        guard startingRoutineID == nil else {
+            return nil
+        }
+
         startingRoutineID = routine.id
         errorMessage = nil
         defer {
             startingRoutineID = nil
         }
 
-        let payload = RoutineSessionStartPayload(
-            id: makeID(),
-            routineID: routine.id,
-            startedAt: now().apiTimestamp,
-            items: routine.items
-                .sorted { $0.position < $1.position }
-                .map {
-                    RoutineSessionItemStartPayload(
-                        id: makeID(),
-                        routineItemID: $0.id
-                    )
+        let payload: RoutineSessionStartPayload
+
+        do {
+            if let pendingPayload = try routineSessionStartStore.load() {
+                guard pendingPayload.routineID == routine.id else {
+                    errorMessage = "Retry the pending routine before starting another."
+                    return nil
                 }
-        )
+                payload = pendingPayload
+            } else {
+                payload = makeStartPayload(routine: routine)
+                try routineSessionStartStore.save(payload)
+            }
+        } catch {
+            errorMessage = "Could not prepare routine start."
+            return nil
+        }
 
         do {
             let session = try await startRoutineSession(payload)
             upsertActiveSession(session)
+            do {
+                try routineSessionStartStore.clear()
+            } catch {
+                errorMessage = "Routine started, but retry state could not be cleared."
+            }
             return session
         } catch {
             errorMessage = "Could not start routine."
@@ -175,6 +194,31 @@ final class RoutinesViewModel: ObservableObject {
         } else {
             activeSessions.insert(session, at: 0)
         }
+    }
+
+    private func makeStartPayload(routine: Routine) -> RoutineSessionStartPayload {
+        RoutineSessionStartPayload(
+            id: makeID(),
+            routineID: routine.id,
+            startedAt: now().apiTimestamp,
+            items: routine.items
+                .sorted { $0.position < $1.position }
+                .map {
+                    RoutineSessionItemStartPayload(
+                        id: makeID(),
+                        routineItemID: $0.id
+                    )
+                }
+        )
+    }
+
+    private func clearReconciledPendingStart() throws {
+        guard let pendingPayload = try routineSessionStartStore.load(),
+              activeSessions.contains(where: { $0.id == pendingPayload.id }) else {
+            return
+        }
+
+        try routineSessionStartStore.clear()
     }
 
     private func replaceItem(_ item: RoutineSessionItem, in sessionID: UUID) {

@@ -342,10 +342,11 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertEqual(draft.payload.exercises[0].workoutSessionSets[0].plannedLoadValue, 70)
     }
 
-    func testSQLiteStoresActiveWorkoutAndConfiguration() throws {
+    func testSQLiteStoresActiveWorkoutConfigurationAndPendingRoutineStart() throws {
         let database = try FitnessLocalDatabase(isStoredInMemoryOnly: true)
         let activeWorkoutStore = ActiveWorkoutStore(database: database, legacyFileURL: nil)
         let configurationStore = WorkoutConfigurationStore(database: database)
+        let routineSessionStartStore = RoutineSessionStartStore(database: database)
         let template = offlineWorkoutTemplateFixture()
         let draft = try WorkoutSessionDraft(template: template)
         let activeState = ActiveWorkoutState(
@@ -354,17 +355,27 @@ final class FitnessAppTests: XCTestCase {
             pendingSessionCreation: PendingWorkoutSessionCreation(payload: draft.payload)
         )
         let configuration = WorkoutConfigurationSnapshot(templates: [template], exercises: [])
+        let pendingRoutineStart = RoutineSessionStartPayload(
+            id: UUID(),
+            routineID: UUID(),
+            startedAt: "2026-10-10T18:00:00.000Z",
+            items: []
+        )
 
         try activeWorkoutStore.save(activeState)
         try configurationStore.save(configuration)
+        try routineSessionStartStore.save(pendingRoutineStart)
 
         XCTAssertEqual(try activeWorkoutStore.load(), activeState)
         XCTAssertEqual(try configurationStore.load(), configuration)
+        XCTAssertEqual(try routineSessionStartStore.load(), pendingRoutineStart)
 
         try activeWorkoutStore.clear()
+        try routineSessionStartStore.clear()
 
         XCTAssertNil(try activeWorkoutStore.load())
         XCTAssertEqual(try configurationStore.load(), configuration)
+        XCTAssertNil(try routineSessionStartStore.load())
     }
 
     @MainActor
@@ -2289,7 +2300,8 @@ final class FitnessAppTests: XCTestCase {
             },
             startRoutineSession: { _ in throw RoutineAPIError.invalidResponse },
             updateRoutineSessionItem: { _, _ in throw RoutineAPIError.invalidResponse },
-            completeRoutineSession: { _, _ in throw RoutineAPIError.invalidResponse }
+            completeRoutineSession: { _, _ in throw RoutineAPIError.invalidResponse },
+            routineSessionStartStore: routineSessionStartStore()
         )
 
         await viewModel.load()
@@ -2309,6 +2321,7 @@ final class FitnessAppTests: XCTestCase {
         let sessionItemID = UUID()
         var identifiers = [sessionID, sessionItemID]
         var capturedPayload: RoutineSessionStartPayload?
+        let startStoreBox = RoutineSessionStartStoreBox()
         let viewModel = RoutinesViewModel(
             listRoutines: { [] },
             listActiveSessions: {
@@ -2325,6 +2338,7 @@ final class FitnessAppTests: XCTestCase {
             },
             updateRoutineSessionItem: { _, _ in throw RoutineAPIError.invalidResponse },
             completeRoutineSession: { _, _ in throw RoutineAPIError.invalidResponse },
+            routineSessionStartStore: routineSessionStartStore(box: startStoreBox),
             now: { Date(timeIntervalSince1970: 0) },
             makeID: { identifiers.removeFirst() }
         )
@@ -2339,6 +2353,89 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertEqual(payload.items[0].routineItemID, routineItemID)
         XCTAssertEqual(session?.id, sessionID)
         XCTAssertEqual(viewModel.activeSessions.map(\.id), [sessionID])
+        XCTAssertNil(startStoreBox.payload)
+    }
+
+    @MainActor
+    func testRoutinesRetryPendingStartWithSameIdentifiers() async throws {
+        let routine = routineFixture()
+        let sessionID = UUID()
+        let sessionItemID = UUID()
+        var identifiers = [sessionID, sessionItemID]
+        var submittedPayloads: [RoutineSessionStartPayload] = []
+        let startStoreBox = RoutineSessionStartStoreBox()
+        let viewModel = RoutinesViewModel(
+            listRoutines: { [] },
+            listActiveSessions: {
+                RoutineSessionPage(sessions: [], limit: 50, offset: 0, total: 0)
+            },
+            startRoutineSession: { payload in
+                submittedPayloads.append(payload)
+                if submittedPayloads.count == 1 {
+                    throw RoutineAPIError.invalidResponse
+                }
+
+                return self.routineSessionFixture(
+                    id: payload.id,
+                    routineID: payload.routineID,
+                    itemID: payload.items[0].id,
+                    routineItemID: payload.items[0].routineItemID
+                )
+            },
+            updateRoutineSessionItem: { _, _ in throw RoutineAPIError.invalidResponse },
+            completeRoutineSession: { _, _ in throw RoutineAPIError.invalidResponse },
+            routineSessionStartStore: routineSessionStartStore(box: startStoreBox),
+            now: { Date(timeIntervalSince1970: 0) },
+            makeID: { identifiers.removeFirst() }
+        )
+
+        let firstSession = await viewModel.start(routine: routine)
+        let pendingPayload = try XCTUnwrap(startStoreBox.payload)
+        let retriedSession = await viewModel.start(routine: routine)
+
+        XCTAssertNil(firstSession)
+        XCTAssertEqual(submittedPayloads, [pendingPayload, pendingPayload])
+        XCTAssertEqual(retriedSession?.id, sessionID)
+        XCTAssertNil(startStoreBox.payload)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testRoutinesLoadClearsReconciledPendingStart() async {
+        let routine = routineFixture()
+        let activeSession = routineSessionFixture(routineID: routine.id)
+        let pendingPayload = RoutineSessionStartPayload(
+            id: activeSession.id,
+            routineID: routine.id,
+            startedAt: activeSession.startedAt,
+            items: activeSession.items.compactMap { item in
+                item.routineItemID.map {
+                    RoutineSessionItemStartPayload(id: item.id, routineItemID: $0)
+                }
+            }
+        )
+        let startStoreBox = RoutineSessionStartStoreBox(payload: pendingPayload)
+        let viewModel = RoutinesViewModel(
+            listRoutines: { [routine] },
+            listActiveSessions: {
+                RoutineSessionPage(
+                    sessions: [activeSession],
+                    limit: 50,
+                    offset: 0,
+                    total: 1
+                )
+            },
+            startRoutineSession: { _ in throw RoutineAPIError.invalidResponse },
+            updateRoutineSessionItem: { _, _ in throw RoutineAPIError.invalidResponse },
+            completeRoutineSession: { _, _ in throw RoutineAPIError.invalidResponse },
+            routineSessionStartStore: routineSessionStartStore(box: startStoreBox)
+        )
+
+        await viewModel.load()
+
+        XCTAssertNil(startStoreBox.payload)
+        XCTAssertEqual(viewModel.activeSessions, [activeSession])
+        XCTAssertNil(viewModel.errorMessage)
     }
 
     @MainActor
@@ -2366,6 +2463,7 @@ final class FitnessAppTests: XCTestCase {
                 return completedItem
             },
             completeRoutineSession: { _, _ in throw RoutineAPIError.invalidResponse },
+            routineSessionStartStore: routineSessionStartStore(),
             now: { Date(timeIntervalSince1970: 0) }
         )
         await viewModel.load()
@@ -2407,6 +2505,7 @@ final class FitnessAppTests: XCTestCase {
                 capturedPayload = payload
                 return completedSession
             },
+            routineSessionStartStore: routineSessionStartStore(),
             now: { Date(timeIntervalSince1970: 0) }
         )
         await viewModel.load()
@@ -2470,6 +2569,16 @@ final class FitnessAppTests: XCTestCase {
             load: { box.state },
             save: { box.state = $0 },
             clear: { box.state = nil }
+        )
+    }
+
+    private func routineSessionStartStore(
+        box: RoutineSessionStartStoreBox = RoutineSessionStartStoreBox()
+    ) -> RoutineSessionStartStore {
+        RoutineSessionStartStore(
+            load: { box.payload },
+            save: { box.payload = $0 },
+            clear: { box.payload = nil }
         )
     }
 
@@ -2763,6 +2872,28 @@ final class FitnessAppTests: XCTestCase {
 
 private enum ActiveWorkoutStoreFailure: Error {
     case failed
+}
+
+private final class RoutineSessionStartStoreBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedPayload: RoutineSessionStartPayload?
+
+    var payload: RoutineSessionStartPayload? {
+        get {
+            lock.withLock {
+                storedPayload
+            }
+        }
+        set {
+            lock.withLock {
+                storedPayload = newValue
+            }
+        }
+    }
+
+    init(payload: RoutineSessionStartPayload? = nil) {
+        storedPayload = payload
+    }
 }
 
 private final class ActiveWorkoutStoreBox: @unchecked Sendable {
