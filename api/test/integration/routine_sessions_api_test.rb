@@ -139,6 +139,25 @@ class RoutineSessionsApiTest < ActionDispatch::IntegrationTest
     assert_not_nil item.reload.completed_at
   end
 
+  test "does not complete routine history more than once" do
+    session = start_session
+    complete_items(session)
+    original_completed_at = Time.utc(2026, 10, 7, 18, 15)
+    session.update!(status: "completed", completed_at: original_completed_at)
+
+    patch "/api/v1/routine_sessions/#{session.id}", params: {
+      routine_session: {
+        status: "completed",
+        completed_at: "2026-10-08T18:15:00Z",
+        lock_version: session.lock_version
+      }
+    }
+
+    assert_response :unprocessable_content
+    assert_equal "Completed routine history cannot be changed", response.parsed_body.dig("errors", 0, "message")
+    assert_equal original_completed_at, session.reload.completed_at
+  end
+
   test "rejects invalid timestamps" do
     routine = create_routine
 

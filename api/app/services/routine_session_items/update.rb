@@ -11,8 +11,10 @@ module RoutineSessionItems
     end
 
     def call
-      ensure_session_is_active!
-      routine_session_item.update!(update_attributes)
+      routine_session_item.routine_session.with_lock do
+        ensure_session_is_active!
+        routine_session_item.update!(update_attributes)
+      end
       routine_session_item.reload
     end
 
