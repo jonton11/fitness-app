@@ -125,6 +125,16 @@ final class RoutinesViewModel: ObservableObject {
             }
             return session
         } catch {
+            if let apiError = error as? RoutineAPIError,
+               apiError.isDefinitiveStartRejection {
+                do {
+                    try routineSessionStartStore.clear()
+                } catch {
+                    errorMessage = "Could not clear rejected routine start."
+                    return nil
+                }
+            }
+
             errorMessage = "Could not start routine."
             return nil
         }
@@ -228,5 +238,15 @@ final class RoutinesViewModel: ObservableObject {
         }
 
         activeSessions[sessionIndex].items[itemIndex] = item
+    }
+}
+
+private extension RoutineAPIError {
+    var isDefinitiveStartRejection: Bool {
+        guard case let .requestFailed(statusCode) = self else {
+            return false
+        }
+
+        return (400..<500).contains(statusCode) && ![408, 425, 429].contains(statusCode)
     }
 }

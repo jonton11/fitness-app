@@ -2372,7 +2372,7 @@ final class FitnessAppTests: XCTestCase {
             startRoutineSession: { payload in
                 submittedPayloads.append(payload)
                 if submittedPayloads.count == 1 {
-                    throw RoutineAPIError.invalidResponse
+                    throw RoutineAPIError.requestFailed(statusCode: 500)
                 }
 
                 return self.routineSessionFixture(
@@ -2396,6 +2396,52 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertNil(firstSession)
         XCTAssertEqual(submittedPayloads, [pendingPayload, pendingPayload])
         XCTAssertEqual(retriedSession?.id, sessionID)
+        XCTAssertNil(startStoreBox.payload)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testRoutinesDiscardRejectedStartBeforeStartingAnotherRoutine() async throws {
+        let rejectedRoutine = routineFixture()
+        let nextRoutine = routineFixture()
+        let rejectedSessionID = UUID()
+        let rejectedItemID = UUID()
+        let nextSessionID = UUID()
+        let nextItemID = UUID()
+        var identifiers = [rejectedSessionID, rejectedItemID, nextSessionID, nextItemID]
+        var submittedPayloads: [RoutineSessionStartPayload] = []
+        let startStoreBox = RoutineSessionStartStoreBox()
+        let viewModel = RoutinesViewModel(
+            listRoutines: { [] },
+            listActiveSessions: {
+                RoutineSessionPage(sessions: [], limit: 50, offset: 0, total: 0)
+            },
+            startRoutineSession: { payload in
+                submittedPayloads.append(payload)
+                if payload.routineID == rejectedRoutine.id {
+                    throw RoutineAPIError.requestFailed(statusCode: 422)
+                }
+
+                return self.routineSessionFixture(
+                    id: payload.id,
+                    routineID: payload.routineID,
+                    itemID: payload.items[0].id,
+                    routineItemID: payload.items[0].routineItemID
+                )
+            },
+            updateRoutineSessionItem: { _, _ in throw RoutineAPIError.invalidResponse },
+            completeRoutineSession: { _, _ in throw RoutineAPIError.invalidResponse },
+            routineSessionStartStore: routineSessionStartStore(box: startStoreBox),
+            now: { Date(timeIntervalSince1970: 0) },
+            makeID: { identifiers.removeFirst() }
+        )
+
+        let rejectedSession = await viewModel.start(routine: rejectedRoutine)
+        let nextSession = await viewModel.start(routine: nextRoutine)
+
+        XCTAssertNil(rejectedSession)
+        XCTAssertEqual(submittedPayloads.map(\.id), [rejectedSessionID, nextSessionID])
+        XCTAssertEqual(nextSession?.id, nextSessionID)
         XCTAssertNil(startStoreBox.payload)
         XCTAssertNil(viewModel.errorMessage)
     }
