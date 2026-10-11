@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_10_020000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_10_030000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -57,6 +57,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_020000) do
     t.check_constraint "load_type::text = ANY (ARRAY['lb'::character varying, 'kg'::character varying, 'machine_stack'::character varying, 'plate_count'::character varying, 'bodyweight'::character varying, 'bodyweight_plus_added'::character varying, 'assisted'::character varying, 'none'::character varying]::text[])", name: "exercises_load_type_valid"
     t.check_constraint "name::text <> ''::text", name: "exercises_name_present"
     t.check_constraint "primary_muscle_group::text <> ''::text", name: "exercises_primary_muscle_group_present"
+  end
+
+  create_table "health_metrics", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "user_id", null: false
+    t.string "kind", null: false
+    t.decimal "value", precision: 14, scale: 4, null: false
+    t.string "unit", null: false
+    t.datetime "started_at", null: false
+    t.datetime "ended_at", null: false
+    t.string "source", default: "healthkit", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id", "ended_at"], name: "index_health_metrics_on_user_id_and_ended_at"
+    t.index ["user_id", "kind", "ended_at"], name: "index_health_metrics_on_user_id_and_kind_and_ended_at"
+    t.check_constraint "ended_at >= started_at", name: "health_metrics_end_after_start"
+    t.check_constraint "kind::text = 'body_weight'::text AND unit::text = 'kg'::text OR kind::text = 'body_fat_percentage'::text AND unit::text = 'percent'::text OR kind::text = 'steps'::text AND unit::text = 'count'::text OR kind::text = 'active_energy'::text AND unit::text = 'kcal'::text OR kind::text = 'sleep_duration'::text AND unit::text = 'minutes'::text OR kind::text = 'resting_heart_rate'::text AND unit::text = 'bpm'::text", name: "health_metrics_kind_unit_valid"
+    t.check_constraint "kind::text = ANY (ARRAY['body_weight'::character varying, 'body_fat_percentage'::character varying, 'steps'::character varying, 'active_energy'::character varying, 'sleep_duration'::character varying, 'resting_heart_rate'::character varying]::text[])", name: "health_metrics_kind_valid"
+    t.check_constraint "source::text = 'healthkit'::text", name: "health_metrics_source_valid"
+    t.check_constraint "value >= 0::numeric", name: "health_metrics_value_nonnegative"
   end
 
   create_table "routine_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -306,6 +325,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_020000) do
   end
 
   add_foreign_key "api_tokens", "users"
+  add_foreign_key "health_metrics", "users"
   add_foreign_key "routine_items", "exercises"
   add_foreign_key "routine_items", "routines", on_delete: :cascade
   add_foreign_key "routine_session_items", "exercises", on_delete: :nullify

@@ -10,6 +10,8 @@ final class ConnectionSettingsViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var confirmationMessage: String?
 
+    var onCredentialsChange: () -> Void = {}
+
     private let loadCredentials: () throws -> APICredentials?
     private let saveCredentials: (APICredentials) throws -> Void
     private let clearCredentials: () throws -> Void
@@ -47,8 +49,12 @@ final class ConnectionSettingsViewModel: ObservableObject {
         }
 
         let credentials = APICredentials(serverURL: normalizedURL, token: token)
+        let credentialsChanged = credentials != storedCredentials
         do {
             try saveCredentials(credentials)
+            if credentialsChanged {
+                onCredentialsChange()
+            }
             storedCredentials = credentials
             serverURL = normalizedURL.absoluteString
             apiToken = ""
@@ -62,9 +68,13 @@ final class ConnectionSettingsViewModel: ObservableObject {
     func clear() {
         errorMessage = nil
         confirmationMessage = nil
+        let hadCredentials = storedCredentials != nil
 
         do {
             try clearCredentials()
+            if hadCredentials {
+                onCredentialsChange()
+            }
             storedCredentials = nil
             serverURL = ""
             apiToken = ""
