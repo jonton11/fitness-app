@@ -85,4 +85,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker compose config
+      - name: Validate development configuration
+        run: docker compose config --quiet
+      - name: Validate production configuration
+        run: docker compose --env-file deployment/production.env.example -f compose.production.yml config --quiet
+      - name: Build production images
+        run: docker compose --env-file deployment/production.env.example -f compose.production.yml build api web
