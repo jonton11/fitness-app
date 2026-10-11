@@ -28,6 +28,29 @@ struct WorkoutTemplateAPIClient {
         return envelope.workoutTemplates
     }
 
+    func getWorkoutSuggestion() async throws -> WorkoutSuggestion? {
+        var request = try configuration.makeRequest(path: "/api/v1/workout_suggestion")
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw WorkoutTemplateAPIError.requestFailed
+        }
+
+        if httpResponse.statusCode == 204 {
+            return nil
+        }
+
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw WorkoutTemplateAPIError.requestFailed
+        }
+
+        let envelope = try JSONDecoder().decode(WorkoutSuggestionEnvelope.self, from: data)
+        return envelope.workoutSuggestion
+    }
+
     func createWorkoutTemplate(_ payload: WorkoutTemplatePayload) async throws -> WorkoutTemplate {
         let envelope: WorkoutTemplateEnvelope = try await request(
             path: "/api/v1/workout_templates",
@@ -104,6 +127,14 @@ private struct WorkoutTemplateEnvelope: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case workoutTemplate = "workout_template"
+    }
+}
+
+private struct WorkoutSuggestionEnvelope: Decodable {
+    var workoutSuggestion: WorkoutSuggestion
+
+    enum CodingKeys: String, CodingKey {
+        case workoutSuggestion = "workout_suggestion"
     }
 }
 
