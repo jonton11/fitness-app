@@ -5,6 +5,10 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   api:
@@ -96,16 +100,40 @@ jobs:
       - name: Validate PowerShell scripts
         shell: pwsh
         run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path "deployment/scripts/backup.ps1"),
-            [ref] $tokens,
-            [ref] $errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | Format-List
-            exit 1
+          Get-ChildItem deployment/scripts/*.ps1 | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref] $tokens,
+              [ref] $errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | Format-List
+              exit 1
+            }
+          }
+      - name: Exercise fresh deployment checkout
+        shell: pwsh
+        run: |
+          $repositoryPath = Join-Path $env:RUNNER_TEMP "deployment-origin"
+          $sourcePath = Join-Path $env:RUNNER_TEMP "fresh-deployment-checkout"
+          & git init --initial-branch=main $repositoryPath
+          & git -C $repositoryPath config user.email "ci@example.com"
+          & git -C $repositoryPath config user.name "CI"
+          Set-Content -LiteralPath (Join-Path $repositoryPath "README.md") -Value "deployment fixture"
+          & git -C $repositoryPath add README.md
+          & git -C $repositoryPath commit --message "test: create deployment fixture"
+          $commitSha = (& git -C $repositoryPath rev-parse HEAD).Trim()
+          & ./deployment/scripts/checkout.ps1 `
+            -CommitSha $commitSha `
+            -RepositoryUrl $repositoryPath `
+            -SourcePath $sourcePath
+
+          $checkedOutCommit = (& git -C $sourcePath rev-parse HEAD).Trim()
+          $workingTreeChanges = @(& git -C $sourcePath status --porcelain)
+          if ($checkedOutCommit -ne $commitSha -or $workingTreeChanges.Count -gt 0) {
+            throw "Fresh deployment checkout was not clean at the requested commit"
           }
       - name: Exercise backup and restore
         env:
@@ -165,3 +193,62 @@ jobs:
         env:
           FITNESS_BACKUP_DIRECTORY: ${{ runner.temp }}/fitness-backups
         run: docker compose --env-file deployment/production.env.example -f compose.production.yml down --volumes --remove-orphans
+
+  deploy:
+    name: Deploy production
+    needs: [api, web, ios, compose]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && vars.PRODUCTION_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    concurrency:
+      group: production-deployment
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Connect to production tailnet
+        uses: tailscale/github-action@a392da0a182bba0e9613b6243ebd69529b1878aa # v4.1.0
+        with:
+          oauth-client-id: ${{ vars.TAILSCALE_OIDC_CLIENT_ID }}
+          audience: ${{ vars.TAILSCALE_OIDC_AUDIENCE }}
+          tags: tag:github-deploy
+          ping: ${{ vars.PRODUCTION_SSH_HOST }}
+      - name: Configure deployment SSH key
+        env:
+          SSH_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+          SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          SSH_USER: ${{ vars.PRODUCTION_SSH_USER }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/production_key
+          chmod 600 ~/.ssh/production_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host production
+            HostName $SSH_HOST
+            User $SSH_USER
+            IdentityFile ~/.ssh/production_key
+            IdentitiesOnly yes
+            BatchMode yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            ServerAliveInterval 15
+            ServerAliveCountMax 4
+          EOF
+          chmod 600 ~/.ssh/config
+      - name: Deploy verified commit
+        env:
+          DEPLOY_COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          scp deployment/scripts/deploy.ps1 deployment/scripts/checkout.ps1 production:
+          ssh production "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File deploy.ps1 -CommitSha $DEPLOY_COMMIT_SHA"
+      - name: Remove deployment SSH key
+        if: always()
+        run: rm -f ~/.ssh/production_key
