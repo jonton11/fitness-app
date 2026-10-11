@@ -80,6 +80,8 @@ test:
 #
 production:
   <<: *default
-  database: api_production
-  username: api
-  password: <%= ENV["API_DATABASE_PASSWORD"] %>
+  database: <%= ENV.fetch("POSTGRES_DB", "fitness_production") %>
+  username: <%= ENV.fetch("POSTGRES_USER", "fitness") %>
+  password: <%= ENV["POSTGRES_PASSWORD"] %>
+  host: <%= ENV.fetch("POSTGRES_HOST", "postgres") %>
+  port: <%= ENV.fetch("POSTGRES_PORT", 5432) %>

@@ -1,0 +1,14 @@
+.git
+.github
+.env
+.env.*
+*.dump
+**/.DS_Store
+**/DerivedData
+**/node_modules
+api/log/*
+api/storage/*
+api/tmp/*
+docs/mockups
+ios
+web/dist
