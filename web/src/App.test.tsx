@@ -281,6 +281,28 @@ describe('App', () => {
     expect(screen.getByText('Dead Bug')).toBeInTheDocument()
   })
 
+  it('opens the health overview from primary navigation', async () => {
+    mockJsonResponse({ workout_templates: [], meta: {} })
+    mockJsonResponse({ exercises: [], meta: {} })
+    for (let index = 0; index < 6; index += 1) {
+      mockJsonResponse({
+        health_metrics: [],
+        meta: { limit: 7, offset: 0, total: 0 },
+      })
+    }
+
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Health' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Health' }),
+    ).toBeInTheDocument()
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/health_metrics?kind=body_weight&limit=7',
+      expect.objectContaining({ headers: { Accept: 'application/json' } }),
+    )
+  })
+
   it('creates an exercise', async () => {
     const savedExercise = {
       ...deadBug,
