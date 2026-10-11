@@ -6,6 +6,7 @@ Rails.application.routes.draw do
       resource :session, only: %i[show create destroy]
       resources :activities, only: %i[index show create]
       resources :exercises, only: %i[index show create update]
+      resources :health_metrics, only: %i[index create]
       resources :routines, only: %i[index show create update]
       resources :routine_sessions, only: %i[index show create update]
       resources :routine_session_items, only: %i[update]
