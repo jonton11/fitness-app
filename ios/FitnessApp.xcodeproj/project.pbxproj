@@ -50,6 +50,12 @@
 		0A0000010000000000000041 /* WorkoutSuggestion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000041 /* WorkoutSuggestion.swift */; };
 		0A0000010000000000000042 /* WorkoutSuggestionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000042 /* WorkoutSuggestionViewModel.swift */; };
 		0A0000010000000000000043 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000043 /* HomeView.swift */; };
+		0A0000010000000000000044 /* HealthMetric.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000044 /* HealthMetric.swift */; };
+		0A0000010000000000000045 /* HealthMetricAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000045 /* HealthMetricAPIClient.swift */; };
+		0A0000010000000000000046 /* HealthKitClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000046 /* HealthKitClient.swift */; };
+		0A0000010000000000000047 /* HealthSyncStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000047 /* HealthSyncStore.swift */; };
+		0A0000010000000000000048 /* HealthSyncViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000048 /* HealthSyncViewModel.swift */; };
+		0A000001000000000000004A /* HealthSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A000002000000000000004A /* HealthSyncTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -108,6 +114,13 @@
 		0A0000020000000000000041 /* WorkoutSuggestion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSuggestion.swift; sourceTree = "<group>"; };
 		0A0000020000000000000042 /* WorkoutSuggestionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSuggestionViewModel.swift; sourceTree = "<group>"; };
 		0A0000020000000000000043 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		0A0000020000000000000044 /* HealthMetric.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthMetric.swift; sourceTree = "<group>"; };
+		0A0000020000000000000045 /* HealthMetricAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthMetricAPIClient.swift; sourceTree = "<group>"; };
+		0A0000020000000000000046 /* HealthKitClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitClient.swift; sourceTree = "<group>"; };
+		0A0000020000000000000047 /* HealthSyncStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSyncStore.swift; sourceTree = "<group>"; };
+		0A0000020000000000000048 /* HealthSyncViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSyncViewModel.swift; sourceTree = "<group>"; };
+		0A0000020000000000000049 /* FitnessApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FitnessApp.entitlements; sourceTree = "<group>"; };
+		0A000002000000000000004A /* HealthSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSyncTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -142,6 +155,7 @@
 			children = (
 				0A0000020000000000000001 /* FitnessApp.swift */,
 				0A0000020000000000000002 /* ContentView.swift */,
+				0A0000020000000000000049 /* FitnessApp.entitlements */,
 				0A0000070000000000000010 /* Models */,
 				0A0000070000000000000011 /* Data */,
 				0A0000070000000000000013 /* Features */,
@@ -153,6 +167,7 @@
 			isa = PBXGroup;
 			children = (
 				0A0000020000000000000003 /* FitnessAppTests.swift */,
+				0A000002000000000000004A /* HealthSyncTests.swift */,
 			);
 			path = FitnessAppTests;
 			sourceTree = "<group>";
@@ -171,6 +186,7 @@
 			children = (
 				0A0000020000000000000036 /* Activity.swift */,
 				0A0000020000000000000010 /* Exercise.swift */,
+				0A0000020000000000000044 /* HealthMetric.swift */,
 				0A0000020000000000000030 /* Routine.swift */,
 				0A0000020000000000000041 /* WorkoutSuggestion.swift */,
 				0A0000020000000000000016 /* WorkoutTemplate.swift */,
@@ -183,6 +199,7 @@
 			isa = PBXGroup;
 			children = (
 				0A0000070000000000000012 /* API */,
+				0A000007000000000000001D /* Health */,
 				0A0000070000000000000016 /* Local */,
 			);
 			path = Data;
@@ -194,6 +211,7 @@
 				0A0000020000000000000037 /* ActivityAPIClient.swift */,
 				0A000002000000000000002B /* APIConfiguration.swift */,
 				0A0000020000000000000011 /* ExerciseAPIClient.swift */,
+				0A0000020000000000000045 /* HealthMetricAPIClient.swift */,
 				0A0000020000000000000031 /* RoutineAPIClient.swift */,
 				0A0000020000000000000017 /* WorkoutTemplateAPIClient.swift */,
 				0A0000020000000000000021 /* WorkoutSessionAPIClient.swift */,
@@ -205,6 +223,7 @@
 			isa = PBXGroup;
 			children = (
 				0A000002000000000000002C /* APICredentialsStorage.swift */,
+				0A0000020000000000000047 /* HealthSyncStore.swift */,
 				0A0000020000000000000027 /* FitnessLocalDatabase.swift */,
 				0A0000020000000000000022 /* ActiveWorkoutStore.swift */,
 				0A0000020000000000000040 /* RoutineSessionStartStore.swift */,
@@ -218,6 +237,7 @@
 			children = (
 				0A000007000000000000001B /* Activities */,
 				0A0000070000000000000014 /* Exercises */,
+				0A000007000000000000001E /* Health */,
 				0A000007000000000000001C /* Home */,
 				0A0000070000000000000015 /* WorkoutTemplates */,
 				0A000007000000000000001A /* Routines */,
@@ -305,6 +325,22 @@
 				0A0000020000000000000042 /* WorkoutSuggestionViewModel.swift */,
 			);
 			path = Home;
+			sourceTree = "<group>";
+		};
+		0A000007000000000000001D /* Health */ = {
+			isa = PBXGroup;
+			children = (
+				0A0000020000000000000046 /* HealthKitClient.swift */,
+			);
+			path = Health;
+			sourceTree = "<group>";
+		};
+		0A000007000000000000001E /* Health */ = {
+			isa = PBXGroup;
+			children = (
+				0A0000020000000000000048 /* HealthSyncViewModel.swift */,
+			);
+			path = Health;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -447,6 +483,11 @@
 				0A0000010000000000000041 /* WorkoutSuggestion.swift in Sources */,
 				0A0000010000000000000042 /* WorkoutSuggestionViewModel.swift in Sources */,
 				0A0000010000000000000043 /* HomeView.swift in Sources */,
+				0A0000010000000000000044 /* HealthMetric.swift in Sources */,
+				0A0000010000000000000045 /* HealthMetricAPIClient.swift in Sources */,
+				0A0000010000000000000046 /* HealthKitClient.swift in Sources */,
+				0A0000010000000000000047 /* HealthSyncStore.swift in Sources */,
+				0A0000010000000000000048 /* HealthSyncViewModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -455,6 +496,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0A0000010000000000000003 /* FitnessAppTests.swift in Sources */,
+				0A000001000000000000004A /* HealthSyncTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -588,11 +630,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = FitnessApp/FitnessApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Fitness;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Fitness reads selected health metrics to show your health history.";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -616,11 +660,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = FitnessApp/FitnessApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Fitness;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Fitness reads selected health metrics to show your health history.";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

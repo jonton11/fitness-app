@@ -1,10 +1,20 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var connectionSettings: ConnectionSettingsViewModel
+    @Environment(\.scenePhase) private var scenePhase
 
-    init(connectionSettings: ConnectionSettingsViewModel = ConnectionSettingsViewModel()) {
+    @StateObject private var connectionSettings: ConnectionSettingsViewModel
+    @StateObject private var healthSync: HealthSyncViewModel
+
+    init(
+        connectionSettings: ConnectionSettingsViewModel = ConnectionSettingsViewModel(),
+        healthSync: HealthSyncViewModel = HealthSyncViewModel()
+    ) {
+        connectionSettings.onCredentialsChange = {
+            healthSync.resetForCredentialChange()
+        }
         _connectionSettings = StateObject(wrappedValue: connectionSettings)
+        _healthSync = StateObject(wrappedValue: healthSync)
     }
 
     var body: some View {
@@ -12,7 +22,11 @@ struct ContentView: View {
             mainTabs
         } else {
             NavigationStack {
-                ConnectionSettingsView(viewModel: connectionSettings, isRequired: true)
+                ConnectionSettingsView(
+                    viewModel: connectionSettings,
+                    isRequired: true,
+                    healthSyncViewModel: healthSync
+                )
             }
         }
     }
@@ -40,10 +54,24 @@ struct ContentView: View {
                 }
 
             NavigationStack {
-                ConnectionSettingsView(viewModel: connectionSettings)
+                ConnectionSettingsView(
+                    viewModel: connectionSettings,
+                    healthSyncViewModel: healthSync
+                )
             }
             .tabItem {
                 Label("Settings", systemImage: "gearshape")
+            }
+        }
+        .task {
+            await healthSync.syncIfEnabled()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else {
+                return
+            }
+            Task {
+                await healthSync.syncIfEnabled()
             }
         }
     }
