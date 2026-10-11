@@ -47,6 +47,127 @@ PostgreSQL remain separate layers: Tailscale controls private network access and
 TLS, Caddy routes web and API traffic, and Rails still requires application
 authentication.
 
+On Windows, enable Tailscale unattended mode and configure Serve once:
+
+```powershell
+tailscale serve --bg http://127.0.0.1:8080
+tailscale serve status
+```
+
+The background Serve configuration survives Tailscale and host restarts. Docker
+Desktop must start when the production Windows account signs in; every long-lived
+container uses `restart: unless-stopped`. Test the complete startup path after a
+Windows reboot before treating the host as production.
+
+## Windows host
+
+The deployment checkout is managed at
+`C:\ProgramData\FitnessApp\source`. Do not edit files there manually. Create
+`C:\ProgramData\FitnessApp\production.env` from the committed example and create
+the backup directory before the first deploy. The populated environment file,
+database volume, and backups never leave the host during deployment.
+
+Install and configure Windows OpenSSH Server for key-only access by a dedicated
+deployment account. That account needs permission to run Docker and write to
+`C:\ProgramData\FitnessApp`, but it does not need a GitHub credential because the
+repository is public. Restrict the Windows firewall rule for TCP 22 to the
+Tailscale interface or Tailscale address ranges. Do not forward port 22 or 8080
+from the router.
+
+Use a dedicated SSH key pair for deployment. Put only the public key in the
+deployment account's `authorized_keys`. Record the Windows OpenSSH host key from
+a trusted local connection and compare its fingerprint with the host's
+`C:\ProgramData\ssh\ssh_host_ed25519_key.pub` before storing it in GitHub. The
+workflow uses strict host checking and never calls `ssh-keyscan` during a deploy.
+
+## GitHub deployment
+
+This public repository must not use a persistent self-hosted runner on the
+production machine. The deploy job uses an ephemeral GitHub-hosted runner,
+authenticates to Tailscale with GitHub OIDC, and reaches Windows through standard
+OpenSSH over the tailnet.
+
+Create a GitHub environment named `production` and limit its deployment branch
+to protected `main`. Configure these environment variables:
+
+```text
+TAILSCALE_OIDC_CLIENT_ID
+TAILSCALE_OIDC_AUDIENCE
+PRODUCTION_SSH_HOST
+PRODUCTION_SSH_USER
+```
+
+Configure these environment secrets:
+
+```text
+PRODUCTION_SSH_PRIVATE_KEY
+PRODUCTION_SSH_KNOWN_HOSTS
+```
+
+The known-hosts value is public key material, but keeping it in the environment
+also avoids publishing the private tailnet hostname. The SSH private key is the
+only long-lived deployment credential in GitHub. Application secrets remain in
+the host-local production environment file.
+
+In Tailscale, create a GitHub OIDC federated identity with `auth_keys` write
+scope and permission to issue `tag:github-deploy`. This repository uses GitHub's
+immutable OIDC subject format:
+
+```text
+repo:jonton11@10856948/fitness-app@1398605359:environment:production
+```
+
+Grant `tag:github-deploy` access only to TCP 22 on the Windows production device,
+which should have a separate production tag. Store the generated Tailscale
+client ID and audience as the GitHub environment variables above; neither value
+is a secret.
+
+Finally, create the repository variable below only after the host, tailnet ACL,
+SSH key, environment file, and backup directory are ready:
+
+```text
+PRODUCTION_DEPLOY_ENABLED=true
+```
+
+Every push to `main` then deploys only after Rails, web, iOS, and Compose checks
+pass. A manual run of the CI workflow on `main` follows the same checks and can
+be used for the initial deploy or a retry.
+
+The deployment script refuses a dirty managed checkout, verifies that the exact
+requested commit belongs to `origin/main`, builds images, stops web and API
+traffic, creates a pre-migration backup, runs Rails migrations, updates the
+services, and requires the database-backed health endpoint to pass. Failures
+print container state and logs and do not report a successful deployed commit.
+Once application traffic has been stopped, a failed backup or migration leaves
+it stopped so an operator can retry or restore without accepting new writes.
+
+## Initial account
+
+There is no public sign-up flow. After the first successful deploy, run the
+existing Rails tasks on the Windows host to provision the single user and issue
+the iPhone API token. Read the password without putting it in shell history:
+
+```powershell
+Set-Location C:\ProgramData\FitnessApp\source
+$env:FITNESS_USER_EMAIL = Read-Host "Email"
+$securePassword = Read-Host "Password" -AsSecureString
+$env:FITNESS_USER_PASSWORD = [System.Net.NetworkCredential]::new("", $securePassword).Password
+docker compose --env-file C:\ProgramData\FitnessApp\production.env -f compose.production.yml run --rm -e FITNESS_USER_EMAIL -e FITNESS_USER_PASSWORD api bin/rails fitness:provision_user
+Remove-Item Env:FITNESS_USER_PASSWORD
+```
+
+Issue the iPhone token and copy its one-time plaintext output directly into the
+app's Keychain-backed configuration:
+
+```powershell
+$env:FITNESS_API_TOKEN_NAME = "iPhone"
+docker compose --env-file C:\ProgramData\FitnessApp\production.env -f compose.production.yml run --rm -e FITNESS_USER_EMAIL -e FITNESS_API_TOKEN_NAME api bin/rails fitness:issue_api_token
+Remove-Item Env:FITNESS_USER_EMAIL
+Remove-Item Env:FITNESS_API_TOKEN_NAME
+```
+
+Do not add the password or printed API token to `production.env`, Git, or GitHub.
+
 ## Backups
 
 `FITNESS_BACKUP_DIRECTORY` must point to a host directory outside the repository

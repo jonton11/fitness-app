@@ -114,9 +114,12 @@ Do not independently reimplement progression rules in React and Swift.
 ### CI/CD
 
 - GitHub Actions
-- Windows production host runs a self-hosted GitHub Actions runner
+- a GitHub-hosted deployment runner joins the tailnet ephemerally through OIDC
+  and deploys to the Windows host over standard OpenSSH
+- do not install a persistent GitHub Actions runner on the production host while
+  this repository is public
 - merge/push to protected `main` triggers production deployment after CI passes
-- Mac may have a separate failover runner/label but is not automatically promoted
+- Mac is not automatically promoted
 
 ---
 
@@ -1637,7 +1640,9 @@ CI
     ↓
 production deploy job
     ↓
-self-hosted Windows runner
+ephemeral GitHub-hosted runner joins Tailscale
+    ↓
+OpenSSH to Windows production host
     ↓
 pre-migration Postgres backup
     ↓
@@ -2006,7 +2011,7 @@ Deliver:
 - Windows Docker production deployment;
 - Tailscale access;
 - Caddy/TLS;
-- GitHub Actions self-hosted deployment;
+- GitHub Actions deployment over ephemeral Tailscale access and OpenSSH;
 - pre-migration backup;
 - health check;
 - restart-on-boot;
