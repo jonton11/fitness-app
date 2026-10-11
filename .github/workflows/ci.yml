@@ -89,6 +89,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Verify Windows checkout line endings
+        run: |
+          set -euo pipefail
+          checkout="$RUNNER_TEMP/windows-autocrlf-checkout"
+          commit=$(git rev-parse HEAD)
+          git clone --no-checkout --no-local . "$checkout"
+          git -C "$checkout" config core.autocrlf true
+          git -C "$checkout" checkout --force "$commit"
+
+          has_crlf=false
+          while IFS= read -r file; do
+            if LC_ALL=C grep --quiet $'\r' "$checkout/$file"; then
+              echo "CRLF line endings found in $file" >&2
+              has_crlf=true
+            fi
+          done < <(git -C "$checkout" ls-files 'api/bin/*' '*.sh')
+
+          test "$has_crlf" = false
       - name: Validate development configuration
         run: docker compose config --quiet
       - name: Validate production configuration

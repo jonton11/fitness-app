@@ -1,0 +1,5 @@
+* text=auto
+
+# These files execute inside Linux containers, including from Windows checkouts.
+/api/bin/* text eol=lf
+*.sh text eol=lf
