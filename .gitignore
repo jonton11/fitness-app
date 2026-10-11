@@ -37,6 +37,8 @@
 .env
 .env.*
 !.env.example
+*.dump
+/backups/
 
 # Node / Vite
 node_modules/

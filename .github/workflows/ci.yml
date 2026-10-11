@@ -91,3 +91,77 @@ jobs:
         run: docker compose --env-file deployment/production.env.example -f compose.production.yml config --quiet
       - name: Build production images
         run: docker compose --env-file deployment/production.env.example -f compose.production.yml build api web
+      - name: Validate backup scripts
+        run: sh -n deployment/backup/*.sh
+      - name: Validate PowerShell scripts
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "deployment/scripts/backup.ps1"),
+            [ref] $tokens,
+            [ref] $errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List
+            exit 1
+          }
+      - name: Exercise backup and restore
+        env:
+          FITNESS_BACKUP_DIRECTORY: ${{ runner.temp }}/fitness-backups
+        run: |
+          set -euo pipefail
+          mkdir -p "$FITNESS_BACKUP_DIRECTORY"
+          docker compose --env-file deployment/production.env.example -f compose.production.yml up -d --wait postgres api
+          docker compose --env-file deployment/production.env.example -f compose.production.yml exec -T api \
+            bin/rails runner 'Exercise.create!(name: "Backup Verification", primary_muscle_group: "test", load_type: "none")'
+          docker compose --env-file deployment/production.env.example -f compose.production.yml run --rm \
+            -e BACKUP_KIND=daily backup
+          sleep 1
+          docker compose --env-file deployment/production.env.example -f compose.production.yml run --rm \
+            -e BACKUP_KIND=daily -e DAILY_BACKUP_RETENTION_COUNT=1 backup
+          backup_count=$(find "$FITNESS_BACKUP_DIRECTORY" -maxdepth 1 -type f -name 'fitness-daily-*.dump' | wc -l)
+          test "$backup_count" -eq 1
+          backup_path=$(find "$FITNESS_BACKUP_DIRECTORY" -maxdepth 1 -type f -name 'fitness-daily-*.dump' -print -quit)
+          test -n "$backup_path"
+          backup_file=$(basename "$backup_path")
+          docker compose --env-file deployment/production.env.example -f compose.production.yml run --rm \
+            -e BACKUP_FILE="$backup_file" verify-backup &
+          first_verification_pid=$!
+          docker compose --env-file deployment/production.env.example -f compose.production.yml run --rm \
+            -e BACKUP_FILE="$backup_file" verify-backup &
+          second_verification_pid=$!
+          first_verification_status=0
+          second_verification_status=0
+          wait "$first_verification_pid" || first_verification_status=$?
+          wait "$second_verification_pid" || second_verification_status=$?
+          test "$first_verification_status" -eq 0
+          test "$second_verification_status" -eq 0
+          corrupt_backup_file="fitness-corrupt.dump"
+          docker compose --env-file deployment/production.env.example -f compose.production.yml run --rm \
+            --entrypoint /bin/sh -e BACKUP_FILE="$backup_file" verify-backup -c '
+              source="/backups/$BACKUP_FILE"
+              target="/backups/fitness-corrupt.dump"
+              cp "$source" "$target"
+              backup_size=$(stat --format=%s "$target")
+              truncate --size=$((backup_size / 2)) "$target"
+            '
+          if docker compose --env-file deployment/production.env.example -f compose.production.yml run --rm \
+            -e BACKUP_FILE="$corrupt_backup_file" verify-backup; then
+            echo "Corrupt backup unexpectedly passed verification" >&2
+            exit 1
+          fi
+          docker compose --env-file deployment/production.env.example -f compose.production.yml exec -T api \
+            bin/rails runner 'Exercise.find_by!(name: "Backup Verification").destroy!; ApplicationRecord.connection.create_table(:post_backup_records) { |table| table.string :name }'
+          docker compose --env-file deployment/production.env.example -f compose.production.yml stop api
+          docker compose --env-file deployment/production.env.example -f compose.production.yml run --rm \
+            -e CONFIRM_RESTORE=yes -e BACKUP_FILE="$backup_file" restore
+          docker compose --env-file deployment/production.env.example -f compose.production.yml up -d --wait api
+          docker compose --env-file deployment/production.env.example -f compose.production.yml exec -T api \
+            bin/rails runner 'raise "record missing after restore" unless Exercise.exists?(name: "Backup Verification"); raise "post-backup table survived restore" if ApplicationRecord.connection.data_source_exists?(:post_backup_records)'
+      - name: Clean up backup rehearsal
+        if: always()
+        env:
+          FITNESS_BACKUP_DIRECTORY: ${{ runner.temp }}/fitness-backups
+        run: docker compose --env-file deployment/production.env.example -f compose.production.yml down --volumes --remove-orphans

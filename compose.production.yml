@@ -65,6 +65,75 @@ services:
       retries: 10
       start_period: 10s
 
+  backup:
+    image: postgres:17
+    profiles: [maintenance]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB:-fitness_production}
+      PGUSER: ${POSTGRES_USER:-fitness}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the production environment file}
+      BACKUP_KIND: ${BACKUP_KIND:-daily}
+      DAILY_BACKUP_RETENTION_COUNT: ${DAILY_BACKUP_RETENTION_COUNT:-14}
+      PRE_DEPLOY_BACKUP_RETENTION_COUNT: ${PRE_DEPLOY_BACKUP_RETENTION_COUNT:-10}
+    entrypoint: ["/bin/sh", "/scripts/backup.sh"]
+    volumes:
+      - ./deployment/backup:/scripts:ro
+      - type: bind
+        source: ${FITNESS_BACKUP_DIRECTORY:?Set FITNESS_BACKUP_DIRECTORY in the production environment file}
+        target: /backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  verify-backup:
+    image: postgres:17
+    profiles: [maintenance]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB:-fitness_production}
+      PGUSER: ${POSTGRES_USER:-fitness}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the production environment file}
+      BACKUP_FILE: ${BACKUP_FILE:-}
+    entrypoint: ["/bin/sh", "/scripts/verify.sh"]
+    volumes:
+      - ./deployment/backup:/scripts:ro
+      - type: bind
+        source: ${FITNESS_BACKUP_DIRECTORY:?Set FITNESS_BACKUP_DIRECTORY in the production environment file}
+        target: /backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  restore:
+    image: postgres:17
+    profiles: [maintenance]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB:-fitness_production}
+      PGUSER: ${POSTGRES_USER:-fitness}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the production environment file}
+      BACKUP_FILE: ${BACKUP_FILE:-}
+      CONFIRM_RESTORE: ${CONFIRM_RESTORE:-}
+    entrypoint: ["/bin/sh", "/scripts/restore.sh"]
+    volumes:
+      - ./deployment/backup:/scripts:ro
+      - type: bind
+        source: ${FITNESS_BACKUP_DIRECTORY:?Set FITNESS_BACKUP_DIRECTORY in the production environment file}
+        target: /backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
 networks:
   backend:
     internal: true
