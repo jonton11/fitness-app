@@ -18,6 +18,7 @@ import type {
 type Draft = {
   name: string
   notes: string
+  focusTags: string
 }
 
 type SlotDraft = {
@@ -55,6 +56,7 @@ type SetPrescriptionDraft = {
 const emptyDraft: Draft = {
   name: '',
   notes: '',
+  focusTags: '',
 }
 
 export function WorkoutTemplates() {
@@ -147,6 +149,7 @@ export function WorkoutTemplates() {
     setDraft({
       name: template.name,
       notes: template.notes ?? '',
+      focusTags: template.focus_tags.join(', '),
     })
     setSlotDrafts(slotDraftsFromTemplate(template))
     setErrors([])
@@ -168,6 +171,7 @@ export function WorkoutTemplates() {
       setDraft({
         name: savedTemplate.name,
         notes: savedTemplate.notes ?? '',
+        focusTags: savedTemplate.focus_tags.join(', '),
       })
       setSlotDrafts(slotDraftsFromTemplate(savedTemplate))
       setTemplates((currentTemplates) =>
@@ -522,6 +526,22 @@ export function WorkoutTemplates() {
                     notes: event.target.value,
                   }))
                 }
+              />
+
+              <label className="field-label" htmlFor="template-focus-tags">
+                Focus tags
+              </label>
+              <input
+                id="template-focus-tags"
+                className="text-input"
+                value={draft.focusTags}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    focusTags: event.target.value,
+                  }))
+                }
+                placeholder="Chest, Back, Shoulders"
               />
 
               <section className="slot-editor" aria-labelledby="slots-title">
@@ -901,6 +921,7 @@ function toPayload(
   return {
     name: draft.name,
     notes: draft.notes.trim() || null,
+    focus_tags: uniqueCommaSeparatedValues(draft.focusTags),
     lock_version: template?.lock_version,
     slots: slotDrafts.map((slot, slotIndex) => ({
       id: slot.id,
@@ -938,6 +959,17 @@ function toPayload(
       ),
     })),
   }
+}
+
+function uniqueCommaSeparatedValues(value: string): string[] {
+  return [
+    ...new Set(
+      value
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    ),
+  ]
 }
 
 function slotDraftsFromTemplate(template: WorkoutTemplate): SlotDraft[] {

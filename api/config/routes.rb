@@ -11,6 +11,7 @@ Rails.application.routes.draw do
       resources :routine_session_items, only: %i[update]
       resources :workout_templates, only: %i[index show create update]
       resources :workout_template_exercise_options, only: %i[create]
+      resource :workout_suggestion, only: :show
       resources :workout_sessions, only: %i[index create show update]
       resources :workout_session_exercises, only: %i[update]
       resources :workout_session_sets, only: %i[update]

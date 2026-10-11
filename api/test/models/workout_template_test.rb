@@ -2,11 +2,16 @@ require "test_helper"
 
 class WorkoutTemplateTest < ActiveSupport::TestCase
   test "normalizes template fields" do
-    template = WorkoutTemplate.new(name: "  Upper Body  ", notes: "  ")
+    template = WorkoutTemplate.new(
+      name: "  Upper Body  ",
+      notes: "  ",
+      focus_tags: [ " Chest ", "", "Chest", "Back" ]
+    )
 
     assert_predicate template, :valid?
     assert_equal "Upper Body", template.name
     assert_nil template.notes
+    assert_equal [ "Chest", "Back" ], template.focus_tags
   end
 
   test "requires a template name" do

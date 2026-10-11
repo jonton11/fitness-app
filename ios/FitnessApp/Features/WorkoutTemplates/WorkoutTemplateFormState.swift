@@ -3,11 +3,13 @@ import Foundation
 struct WorkoutTemplateFormState: Equatable {
     var name: String
     var notes: String
+    var focusTags: String
     var slots: [WorkoutTemplateSlotFormState]
 
     init(template: WorkoutTemplate? = nil) {
         name = template?.name ?? ""
         notes = template?.notes ?? ""
+        focusTags = template?.focusTags.joined(separator: ", ") ?? ""
         slots = template?.slots.map(WorkoutTemplateSlotFormState.init(slot:)) ?? []
     }
 
@@ -15,6 +17,7 @@ struct WorkoutTemplateFormState: Equatable {
         WorkoutTemplatePayload(
             name: name,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+            focusTags: focusTags.uniqueCommaSeparatedValues,
             archivedAt: nil,
             lockVersion: lockVersion,
             slots: slots.enumerated().compactMap { index, slot in
@@ -219,5 +222,18 @@ private extension String {
     var optionalDouble: Double? {
         let trimmedValue = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmedValue.isEmpty ? nil : Double(trimmedValue)
+    }
+
+    var uniqueCommaSeparatedValues: [String] {
+        var seen = Set<String>()
+
+        return split(separator: ",").compactMap { value in
+            let tag = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !tag.isEmpty, seen.insert(tag).inserted else {
+                return nil
+            }
+
+            return tag
+        }
     }
 }

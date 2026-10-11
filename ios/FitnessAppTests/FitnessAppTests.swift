@@ -32,6 +32,7 @@ final class FitnessAppTests: XCTestCase {
         var form = WorkoutTemplateFormState()
         form.name = "Upper Body"
         form.notes = "  "
+        form.focusTags = " Chest, Back, Chest "
         form.slots = [
             WorkoutTemplateSlotFormState(defaultExerciseID: exerciseID)
         ]
@@ -50,6 +51,7 @@ final class FitnessAppTests: XCTestCase {
 
         XCTAssertEqual(payload.name, "Upper Body")
         XCTAssertNil(payload.notes)
+        XCTAssertEqual(payload.focusTags, ["Chest", "Back"])
         XCTAssertEqual(payload.lockVersion, 2)
         XCTAssertEqual(payload.slots.count, 1)
         XCTAssertEqual(payload.slots[0].label, "Upper Chest Press")
@@ -609,6 +611,79 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertEqual(bodyPayload["starting_load_value"] as? Double, 80)
         XCTAssertEqual(bodyPayload["progression_increment"] as? Double, 10)
         XCTAssertEqual(createdOption, option)
+    }
+
+    func testWorkoutTemplateAPIClientLoadsWorkoutSuggestion() async throws {
+        let templateID = UUID()
+        let requestBox = URLRequestBox()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolStub.self]
+        let apiClient = WorkoutTemplateAPIClient(
+            baseURL: URL(string: "https://fitness.example")!,
+            session: URLSession(configuration: configuration),
+            bearerToken: "fitness_test_token"
+        )
+
+        URLProtocolStub.requestHandler = { request in
+            requestBox.request = request
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            let responseData = try JSONSerialization.data(withJSONObject: [
+                "workout_suggestion": [
+                    "workout_template_id": templateID.uuidString,
+                    "workout_template_name": "Upper Body",
+                    "focus_tags": ["Upper Body"],
+                    "last_relevant_at": "2026-10-08T12:00:00.000Z"
+                ]
+            ])
+
+            return (response, responseData)
+        }
+        defer {
+            URLProtocolStub.requestHandler = nil
+        }
+
+        let fetchedSuggestion = try await apiClient.getWorkoutSuggestion()
+        let suggestion = try XCTUnwrap(fetchedSuggestion)
+        let request = try XCTUnwrap(requestBox.request)
+
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.url?.path, "/api/v1/workout_suggestion")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer fitness_test_token")
+        XCTAssertEqual(suggestion.workoutTemplateID, templateID)
+        XCTAssertEqual(suggestion.workoutTemplateName, "Upper Body")
+        XCTAssertEqual(suggestion.focusTags, ["Upper Body"])
+        XCTAssertEqual(suggestion.lastRelevantAt, "2026-10-08T12:00:00.000Z")
+    }
+
+    func testWorkoutTemplateAPIClientReturnsNoSuggestionForNoContent() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolStub.self]
+        let apiClient = WorkoutTemplateAPIClient(
+            baseURL: URL(string: "https://fitness.example")!,
+            session: URLSession(configuration: configuration)
+        )
+
+        URLProtocolStub.requestHandler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 204,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (response, Data())
+        }
+        defer {
+            URLProtocolStub.requestHandler = nil
+        }
+
+        let suggestion = try await apiClient.getWorkoutSuggestion()
+
+        XCTAssertNil(suggestion)
     }
 
     func testWorkoutSessionAPIClientFinishesSessionWithRailsEnvelope() async throws {
@@ -2871,6 +2946,58 @@ final class FitnessAppTests: XCTestCase {
         XCTAssertEqual(viewModel.activities, [recentActivity, backdatedActivity])
         XCTAssertFalse(viewModel.canLoadMore)
         XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testWorkoutSuggestionLoadsSuggestedTemplate() async {
+        let expectedSuggestion = WorkoutSuggestion(
+            workoutTemplateID: UUID(),
+            workoutTemplateName: "Upper Body",
+            focusTags: ["Upper Body"],
+            lastRelevantAt: "2026-10-08T12:00:00.000Z"
+        )
+        var fetchCount = 0
+        let viewModel = WorkoutSuggestionViewModel {
+            fetchCount += 1
+            return expectedSuggestion
+        }
+
+        await viewModel.load()
+
+        XCTAssertEqual(fetchCount, 1)
+        XCTAssertEqual(viewModel.suggestion, expectedSuggestion)
+        XCTAssertFalse(viewModel.isLoading)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testWorkoutSuggestionClearsStaleSuggestionWhenRefreshFails() async {
+        let expectedSuggestion = WorkoutSuggestion(
+            workoutTemplateID: UUID(),
+            workoutTemplateName: "Upper Body",
+            focusTags: ["Upper Body"],
+            lastRelevantAt: nil
+        )
+        var fetchCount = 0
+        let viewModel = WorkoutSuggestionViewModel {
+            fetchCount += 1
+
+            if fetchCount == 1 {
+                return expectedSuggestion
+            }
+
+            throw URLError(.notConnectedToInternet)
+        }
+
+        await viewModel.load()
+        XCTAssertEqual(viewModel.suggestion, expectedSuggestion)
+
+        await viewModel.load()
+
+        XCTAssertEqual(fetchCount, 2)
+        XCTAssertNil(viewModel.suggestion)
+        XCTAssertEqual(viewModel.errorMessage, "Could not load a workout suggestion.")
+        XCTAssertFalse(viewModel.isLoading)
     }
 
     func testAPIConfigurationRejectsBearerTokenOverRemoteHTTP() {

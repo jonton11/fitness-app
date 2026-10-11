@@ -46,8 +46,10 @@
 		0A0000010000000000000036 /* Activity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000036 /* Activity.swift */; };
 		0A0000010000000000000037 /* ActivityAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000037 /* ActivityAPIClient.swift */; };
 		0A0000010000000000000038 /* ActivitiesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000038 /* ActivitiesViewModel.swift */; };
-		0A0000010000000000000039 /* ActivitiesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000039 /* ActivitiesView.swift */; };
 		0A0000010000000000000040 /* RoutineSessionStartStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000040 /* RoutineSessionStartStore.swift */; };
+		0A0000010000000000000041 /* WorkoutSuggestion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000041 /* WorkoutSuggestion.swift */; };
+		0A0000010000000000000042 /* WorkoutSuggestionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000042 /* WorkoutSuggestionViewModel.swift */; };
+		0A0000010000000000000043 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000020000000000000043 /* HomeView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -102,8 +104,10 @@
 		0A0000020000000000000036 /* Activity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Activity.swift; sourceTree = "<group>"; };
 		0A0000020000000000000037 /* ActivityAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityAPIClient.swift; sourceTree = "<group>"; };
 		0A0000020000000000000038 /* ActivitiesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivitiesViewModel.swift; sourceTree = "<group>"; };
-		0A0000020000000000000039 /* ActivitiesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivitiesView.swift; sourceTree = "<group>"; };
 		0A0000020000000000000040 /* RoutineSessionStartStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineSessionStartStore.swift; sourceTree = "<group>"; };
+		0A0000020000000000000041 /* WorkoutSuggestion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSuggestion.swift; sourceTree = "<group>"; };
+		0A0000020000000000000042 /* WorkoutSuggestionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSuggestionViewModel.swift; sourceTree = "<group>"; };
+		0A0000020000000000000043 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -168,6 +172,7 @@
 				0A0000020000000000000036 /* Activity.swift */,
 				0A0000020000000000000010 /* Exercise.swift */,
 				0A0000020000000000000030 /* Routine.swift */,
+				0A0000020000000000000041 /* WorkoutSuggestion.swift */,
 				0A0000020000000000000016 /* WorkoutTemplate.swift */,
 				0A0000020000000000000020 /* WorkoutSession.swift */,
 			);
@@ -213,6 +218,7 @@
 			children = (
 				0A000007000000000000001B /* Activities */,
 				0A0000070000000000000014 /* Exercises */,
+				0A000007000000000000001C /* Home */,
 				0A0000070000000000000015 /* WorkoutTemplates */,
 				0A000007000000000000001A /* Routines */,
 				0A0000070000000000000017 /* ActiveWorkout */,
@@ -288,9 +294,17 @@
 			isa = PBXGroup;
 			children = (
 				0A0000020000000000000038 /* ActivitiesViewModel.swift */,
-				0A0000020000000000000039 /* ActivitiesView.swift */,
 			);
 			path = Activities;
+			sourceTree = "<group>";
+		};
+		0A000007000000000000001C /* Home */ = {
+			isa = PBXGroup;
+			children = (
+				0A0000020000000000000043 /* HomeView.swift */,
+				0A0000020000000000000042 /* WorkoutSuggestionViewModel.swift */,
+			);
+			path = Home;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -429,8 +443,10 @@
 				0A0000010000000000000036 /* Activity.swift in Sources */,
 				0A0000010000000000000037 /* ActivityAPIClient.swift in Sources */,
 				0A0000010000000000000038 /* ActivitiesViewModel.swift in Sources */,
-				0A0000010000000000000039 /* ActivitiesView.swift in Sources */,
 				0A0000010000000000000040 /* RoutineSessionStartStore.swift in Sources */,
+				0A0000010000000000000041 /* WorkoutSuggestion.swift in Sources */,
+				0A0000010000000000000042 /* WorkoutSuggestionViewModel.swift in Sources */,
+				0A0000010000000000000043 /* HomeView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

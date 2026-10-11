@@ -19,10 +19,10 @@ struct ContentView: View {
 
     private var mainTabs: some View {
         TabView {
-            ActivitiesView()
-            .tabItem {
-                Label("Home", systemImage: "house")
-            }
+            HomeView()
+                .tabItem {
+                    Label("Home", systemImage: "house")
+                }
 
             WorkoutTemplatesView()
                 .tabItem {
