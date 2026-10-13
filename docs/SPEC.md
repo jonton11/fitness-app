@@ -105,17 +105,23 @@ Do not independently reimplement progression rules in React and Swift.
 ### Infrastructure
 
 - Docker / Docker Compose
-- primary production host: user's Windows PC
+- primary production host: an Oracle Cloud Infrastructure Always Free
+  `VM.Standard.A1.Flex` instance running a supported Ubuntu LTS release on ARM64
+- use only Always Free-eligible compute, storage, and networking resources; do
+  not enable paid resources or upgrade the tenancy to work around capacity
+  limits
 - private remote connectivity: Tailscale
 - reverse proxy/TLS: Caddy or equivalent simple reverse proxy
 - production host is private; do not expose Rails/Postgres directly to the public internet
-- same deployment must be portable to macOS for manual failover
+- treat free-tier capacity and instance reclamation as operational risks; data
+  recovery must not depend on the VM surviving
+- the same deployment must remain portable to macOS for manual failover
 
 ### CI/CD
 
 - GitHub Actions
 - a GitHub-hosted deployment runner joins the tailnet ephemerally through OIDC
-  and deploys to the Windows host over standard OpenSSH
+  and deploys to the Linux production host over standard OpenSSH
 - do not install a persistent GitHub Actions runner on the production host while
   this repository is public
 - merge/push to protected `main` triggers production deployment after CI passes
@@ -1642,7 +1648,7 @@ production deploy job
     ↓
 ephemeral GitHub-hosted runner joins Tailscale
     ↓
-OpenSSH to Windows production host
+OpenSSH to OCI Ubuntu production host
     ↓
 pre-migration Postgres backup
     ↓
@@ -1672,7 +1678,8 @@ Exact composition may combine React static serving with the proxy if that keeps 
 
 Production containers should automatically restart after host reboot.
 
-The Windows machine is the normal authoritative server.
+Docker and Tailscale should start through normal Linux service management. The
+OCI Ubuntu VM is the normal authoritative server.
 
 ---
 
@@ -1699,9 +1706,12 @@ PostgreSQL is canonical shared data and must be backed up.
 ### Required backups
 
 - automatic backup before production migrations;
-- scheduled local `pg_dump`;
+- scheduled local `pg_dump` on the production VM;
+- replication of retained dumps to a private, encrypted OCI Object Storage
+  bucket that remains within Always Free limits;
 - retention sufficient to recover from accidental bad deployments/edits;
-- maintain at least one copy that can be restored on the Mac when practical.
+- periodically retain at least one verified copy outside the Oracle tenancy that
+  can be restored on the Mac.
 
 Because the dataset is tiny, favor simple full logical dumps over complicated incremental systems.
 
@@ -1735,13 +1745,13 @@ Use a **single active server**.
 Normal:
 
 ```text
-Windows = authoritative production server
-Mac     = client + potential failover host
+OCI Ubuntu VM = authoritative production server
+Mac           = client + potential failover host
 ```
 
 Do not build automatic multi-primary database replication.
 
-If Windows becomes unavailable for an extended period:
+If the Oracle VM becomes unavailable or is reclaimed:
 
 1. obtain latest safe PostgreSQL backup;
 2. start same Docker Compose stack on Mac;
@@ -1795,6 +1805,7 @@ Never commit:
 - signing secrets;
 - Apple credentials;
 - production database dumps;
+- OCI credentials or Object Storage access tokens;
 - Tailscale credentials.
 
 Use environment variables / local secret storage appropriate to each runtime.
@@ -2008,11 +2019,12 @@ Acceptance:
 
 Deliver:
 
-- Windows Docker production deployment;
+- Oracle Always Free Ubuntu ARM64 Docker production deployment;
 - Tailscale access;
 - Caddy/TLS;
 - GitHub Actions deployment over ephemeral Tailscale access and OpenSSH;
 - pre-migration backup;
+- retained backup replication to private OCI Object Storage;
 - health check;
 - restart-on-boot;
 - documented Mac failover.
@@ -2021,7 +2033,9 @@ Acceptance:
 
 - merge to `main` deploys only after CI passes;
 - failed health check is visible and does not silently report success;
-- production survives Windows reboot;
+- production survives Linux host reboot;
+- production images build and run on ARM64;
+- no paid OCI resource or public Rails/PostgreSQL endpoint is required;
 - iPhone can sync remotely over private network.
 
 ### Post-MVE follow-up — Agent review evals
