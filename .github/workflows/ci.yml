@@ -117,6 +117,79 @@ jobs:
         run: sh -n deployment/backup/*.sh
       - name: Validate deployment scripts
         run: bash -n deployment/scripts/*.sh
+      - name: Validate backup systemd units
+        run: |
+          set -euo pipefail
+          if ! id fitness-app >/dev/null 2>&1; then
+            sudo useradd --system --user-group --no-create-home fitness-app
+          fi
+          sudo install -d /usr/local/lib/fitness-app
+          sudo install -m 755 deployment/scripts/backup-job.sh \
+            /usr/local/lib/fitness-app/backup-job.sh
+          systemd-analyze verify \
+            deployment/systemd/fitness-app-backup.service \
+            deployment/systemd/fitness-app-backup.timer
+      - name: Exercise backup job with configured data root
+        run: |
+          set -euo pipefail
+          data_root="$RUNNER_TEMP/custom-fitness-root"
+          scripts_directory="$data_root/source/deployment/scripts"
+          deployment_config="$RUNNER_TEMP/backup-job.env"
+          calls_file="$RUNNER_TEMP/backup-job-calls"
+          expected_calls_file="$RUNNER_TEMP/expected-backup-job-calls"
+          mkdir -p "$scripts_directory"
+          printf '%s\n' "FITNESS_DATA_ROOT=$data_root" > "$deployment_config"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'printf "backup:%s\n" "$1" >> "$BACKUP_JOB_CALLS"' > "$scripts_directory/backup.sh"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'printf "replicate\n" >> "$BACKUP_JOB_CALLS"' > "$scripts_directory/replicate-backups.sh"
+          chmod +x "$scripts_directory/backup.sh" "$scripts_directory/replicate-backups.sh"
+
+          BACKUP_JOB_CALLS="$calls_file" \
+            FITNESS_DEPLOYMENT_CONFIG="$deployment_config" \
+            ./deployment/scripts/backup-job.sh
+
+          printf '%s\n' backup:daily replicate > "$expected_calls_file"
+          diff --unified "$expected_calls_file" "$calls_file"
+      - name: Exercise OCI backup replication
+        run: |
+          set -euo pipefail
+          backup_directory="$RUNNER_TEMP/replication-backups"
+          fake_bin="$RUNNER_TEMP/replication-bin"
+          deployment_config="$RUNNER_TEMP/replication.env"
+          arguments_file="$RUNNER_TEMP/oci-arguments"
+          expected_arguments_file="$RUNNER_TEMP/expected-oci-arguments"
+          mkdir -p "$backup_directory" "$fake_bin"
+          truncate --size=129M "$backup_directory/fitness-daily-20261012T030000Z.dump"
+          touch "$backup_directory/ignored.txt"
+          printf '%s\n' \
+            "FITNESS_BACKUP_DIRECTORY=$backup_directory" \
+            "OCI_BACKUP_NAMESPACE=test-namespace" \
+            "OCI_BACKUP_BUCKET=test-bucket" \
+            "OCI_BACKUP_PREFIX=production" > "$deployment_config"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'printf "%s\n" "$@" > "$OCI_ARGUMENTS_FILE"' > "$fake_bin/oci"
+          chmod +x "$fake_bin/oci"
+
+          PATH="$fake_bin:$PATH" \
+            OCI_ARGUMENTS_FILE="$arguments_file" \
+            FITNESS_DEPLOYMENT_CONFIG="$deployment_config" \
+            ./deployment/scripts/replicate-backups.sh
+
+          printf '%s\n' \
+            os object sync \
+            --auth instance_principal \
+            --namespace-name test-namespace \
+            --bucket-name test-bucket \
+            --src-dir "$backup_directory" \
+            --prefix production/ \
+            --include '*.dump' \
+            --no-multipart \
+            --no-follow-symlinks > "$expected_arguments_file"
+          diff --unified "$expected_arguments_file" "$arguments_file"
       - name: Exercise deployment checkout safeguards
         run: |
           set -euo pipefail
