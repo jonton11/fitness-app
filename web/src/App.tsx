@@ -3,6 +3,13 @@ import { Login } from './features/auth/Login'
 import { ActivityManager } from './features/activities/ActivityManager'
 import { HealthOverview } from './features/health/HealthOverview'
 import { RoutineManager } from './features/routines/RoutineManager'
+import { AppearanceSettings } from './features/settings/AppearanceSettings'
+import {
+  applyAppearancePreference,
+  observeSystemAppearance,
+  persistAppearancePreference,
+  readAppearancePreference,
+} from './features/settings/appearance'
 import { WorkoutHistory } from './features/workoutSessions/WorkoutHistory'
 import { WorkoutTemplates } from './features/workoutTemplates/WorkoutTemplates'
 
@@ -15,7 +22,13 @@ import {
 } from './api/session'
 
 type Section =
-  'workouts' | 'routines' | 'activities' | 'history' | 'health' | 'exercises'
+  | 'workouts'
+  | 'routines'
+  | 'activities'
+  | 'history'
+  | 'health'
+  | 'exercises'
+  | 'settings'
 
 type AuthenticationState =
   | { status: 'loading' }
@@ -29,6 +42,20 @@ function App() {
   })
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState<string | null>(null)
+  const [appearance, setAppearance] = useState(readAppearancePreference)
+
+  useEffect(() => {
+    persistAppearancePreference(appearance)
+    applyAppearancePreference(appearance)
+
+    if (appearance !== 'system') {
+      return
+    }
+
+    return observeSystemAppearance((prefersDark) => {
+      applyAppearancePreference('system', prefersDark)
+    })
+  }, [appearance])
 
   useEffect(() => {
     let isCurrent = true
@@ -132,6 +159,13 @@ function App() {
           >
             Health
           </button>
+          <button
+            className={section === 'settings' ? 'selected' : ''}
+            type="button"
+            onClick={() => setSection('settings')}
+          >
+            Settings
+          </button>
         </div>
         <div className="session-controls">
           <span>{authentication.user.email_address}</span>
@@ -151,6 +185,12 @@ function App() {
       {section === 'history' ? <WorkoutHistory /> : null}
       {section === 'exercises' ? <ExerciseLibrary /> : null}
       {section === 'health' ? <HealthOverview /> : null}
+      {section === 'settings' ? (
+        <AppearanceSettings
+          appearance={appearance}
+          onAppearanceChange={setAppearance}
+        />
+      ) : null}
     </>
   )
 }

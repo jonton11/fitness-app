@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct ConnectionSettingsView: View {
+    @AppStorage(AppearancePreference.storageKey)
+    private var appearancePreference = AppearancePreference.system
+
     @ObservedObject var viewModel: ConnectionSettingsViewModel
     @ObservedObject var healthSyncViewModel: HealthSyncViewModel
     let isRequired: Bool
@@ -17,6 +20,16 @@ struct ConnectionSettingsView: View {
 
     var body: some View {
         Form {
+            Section("Appearance") {
+                Picker("Appearance", selection: $appearancePreference) {
+                    ForEach(AppearancePreference.allCases) { preference in
+                        Text(preference.title).tag(preference)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+
             Section("Server") {
                 TextField("Server URL", text: $viewModel.serverURL)
                     .keyboardType(.URL)
