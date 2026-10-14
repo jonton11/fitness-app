@@ -13,6 +13,7 @@ import type { Routine } from './api/routines'
 import type { User } from './api/session'
 import type { WorkoutSession } from './api/workoutSessions'
 import type { WorkoutTemplate } from './api/workoutTemplates'
+import { appearanceStorageKey } from './features/settings/appearance'
 
 const owner: User = {
   id: 'user-1',
@@ -171,6 +172,9 @@ const completedSession: WorkoutSession = {
 
 describe('App', () => {
   beforeEach(() => {
+    window.localStorage.clear()
+    document.documentElement.removeAttribute('data-theme')
+    document.documentElement.style.removeProperty('color-scheme')
     vi.stubGlobal('fetch', vi.fn())
     vi.stubGlobal(
       'confirm',
@@ -301,6 +305,20 @@ describe('App', () => {
       '/api/v1/health_metrics?kind=body_weight&limit=7',
       expect.objectContaining({ headers: { Accept: 'application/json' } }),
     )
+  })
+
+  it('persists an explicit appearance from settings', async () => {
+    mockJsonResponse({ workout_templates: [], meta: {} })
+    mockJsonResponse({ exercises: [], meta: {} })
+
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Settings' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Dark' }))
+
+    expect(screen.getByRole('radio', { name: 'Dark' })).toBeChecked()
+    expect(window.localStorage.getItem(appearanceStorageKey)).toBe('dark')
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(document.documentElement.style.colorScheme).toBe('dark')
   })
 
   it('creates an exercise', async () => {
