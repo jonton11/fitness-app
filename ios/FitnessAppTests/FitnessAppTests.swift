@@ -7,6 +7,16 @@ final class FitnessAppTests: XCTestCase {
         _ = ContentView()
     }
 
+    func testAppearancePreferencesMapToColorSchemes() {
+        XCTAssertNil(AppearancePreference.system.colorScheme)
+        XCTAssertEqual(AppearancePreference.light.colorScheme, .light)
+        XCTAssertEqual(AppearancePreference.dark.colorScheme, .dark)
+        XCTAssertEqual(
+            AppearancePreference.allCases.map(\.title),
+            ["System", "Light", "Dark"]
+        )
+    }
+
     func testExerciseFormPayloadNormalizesSecondaryMuscleGroups() {
         var form = ExerciseFormState()
         form.name = "Cable Lateral Raise"
