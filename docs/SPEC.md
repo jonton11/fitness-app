@@ -120,11 +120,14 @@ Do not independently reimplement progression rules in React and Swift.
 ### CI/CD
 
 - GitHub Actions
-- a GitHub-hosted deployment runner joins the tailnet ephemerally through OIDC
-  and deploys to the Linux production host over standard OpenSSH
-- do not install a persistent GitHub Actions runner on the production host while
-  this repository is public
-- merge/push to protected `main` triggers production deployment after CI passes
+- GitHub Actions verifies pull requests and `main` but does not receive
+  production infrastructure credentials or connect to the production host
+- production deployment is an explicit operator action after CI passes
+- a trusted operator workstation joins the tailnet normally and deploys an exact
+  commit from `main` to the Linux production host over standard OpenSSH
+- keep the production SSH private key and host configuration on the trusted
+  operator workstation, outside the repository
+- do not install a persistent GitHub Actions runner on the production host
 - Mac is not automatically promoted
 
 ---
@@ -1644,9 +1647,9 @@ merge to main
     ↓
 CI
     ↓
-production deploy job
+operator confirms the exact main commit passed CI
     ↓
-ephemeral GitHub-hosted runner joins Tailscale
+operator starts deployment from a trusted workstation on Tailscale
     ↓
 OpenSSH to OCI Ubuntu production host
     ↓
@@ -1680,6 +1683,26 @@ Production containers should automatically restart after host reboot.
 
 Docker and Tailscale should start through normal Linux service management. The
 OCI Ubuntu VM is the normal authoritative server.
+
+### Self-hosting portability
+
+The production deployment is a reference implementation for independently
+self-hosted, single-user installations. It is not a shared multi-tenant service.
+
+- a clean clone or fork must run the local Docker development stack without
+  editing tracked files;
+- repository identity, tailnet identity, hostnames, filesystem paths, and
+  credentials must come from operator-owned configuration rather than committed
+  owner-specific values;
+- CI must not require or receive production infrastructure credentials;
+- production deployment must require an explicit command from a configured
+  operator workstation and must never run as a side effect of public CI;
+- each installation must explicitly provision its own owner account and API
+  tokens; do not ship shared seed credentials or a default production account;
+- support AMD64 development hosts and the ARM64 production target without
+  maintaining separate application implementations;
+- document a clean Ubuntu VM setup path that does not require manual edits to
+  tracked source files.
 
 ---
 
@@ -2022,7 +2045,8 @@ Deliver:
 - Oracle Always Free Ubuntu ARM64 Docker production deployment;
 - Tailscale access;
 - Caddy/TLS;
-- GitHub Actions deployment over ephemeral Tailscale access and OpenSSH;
+- operator-initiated deployment over Tailscale and OpenSSH after GitHub Actions
+  verifies the commit;
 - pre-migration backup;
 - retained backup replication to private OCI Object Storage;
 - health check;
@@ -2031,11 +2055,17 @@ Deliver:
 
 Acceptance:
 
-- merge to `main` deploys only after CI passes;
+- an operator can deploy an exact commit from `main` after CI passes;
+- GitHub Actions has no production SSH key, tailnet deployment identity, or
+  other production infrastructure credential;
 - failed health check is visible and does not silently report success;
 - production survives Linux host reboot;
 - production images build and run on ARM64;
 - no paid OCI resource or public Rails/PostgreSQL endpoint is required;
+- a clean fork can configure its own production deployment entirely through
+  operator-owned and host-local files;
+- forks pass CI without production configuration and CI never attempts a
+  deployment;
 - iPhone can sync remotely over private network.
 
 ### Post-MVE follow-up — Agent review evals
