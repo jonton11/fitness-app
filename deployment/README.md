@@ -36,6 +36,10 @@ Docker access is effectively root access. Do not use the deployment account for
 unrelated workloads. Start a new login session after changing its group
 membership.
 
+Install the [OCI CLI](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliinstall.htm)
+as the `fitness-app` user and allow its installer to place the executable in
+`/home/fitness-app/bin`. Verify it from that account with `oci --version`.
+
 Create the host-owned configuration directories:
 
 ```sh
@@ -222,9 +226,110 @@ Create a pre-deploy backup:
 ```
 
 Daily and pre-deploy backups have separate retention limits. The defaults keep
-14 daily backups and 10 recent deployment backups. Backup scheduling and private
-OCI Object Storage replication are configured separately from the application
-deploy so cloud credentials remain outside this repository.
+14 daily backups and 10 recent deployment backups.
+
+### Object Storage
+
+Create a private OCI Object Storage bucket in the production compartment. Keep
+its storage and request usage inside the Always Free allowance. Object Storage
+encrypts objects at rest by default; do not make the bucket public or create a
+pre-authenticated request.
+
+Create an OCI dynamic group that matches only the production instance:
+
+```text
+instance.id = '<production-instance-ocid>'
+```
+
+Grant that dynamic group only the access needed to inspect the bucket and sync
+objects. Replace every placeholder with resources owned by the installation:
+
+```text
+Allow dynamic-group <backup-dynamic-group> to read buckets in compartment <production-compartment> where target.bucket.name = '<backup-bucket>'
+Allow dynamic-group <backup-dynamic-group> to {OBJECT_INSPECT, OBJECT_READ, OBJECT_CREATE} in compartment <production-compartment> where target.bucket.name = '<backup-bucket>'
+```
+
+Keep object versioning disabled; backup filenames are unique and the VM cannot
+overwrite them. Object Lifecycle Management runs as the regional Object Storage
+service rather than as the VM. In a policy created in the tenancy root, grant
+that service only the bucket and object permissions needed to execute deletion:
+
+```text
+Allow service objectstorage-<region-identifier> to manage object-family in compartment <production-compartment> where all {target.bucket.name='<backup-bucket>', any {request.permission='BUCKET_INSPECT', request.permission='BUCKET_READ', request.permission='OBJECT_INSPECT', request.permission='OBJECT_DELETE'}}
+```
+
+Configure an enabled lifecycle rule named `fitness-app-90-day-retention` to
+delete objects under the chosen backup prefix after 90 days. That keeps normal
+retention comfortably beyond the local 14-day window without allowing backups
+to grow beyond the free storage quota.
+
+Set `OCI_BACKUP_NAMESPACE`, `OCI_BACKUP_BUCKET`, and `OCI_BACKUP_PREFIX` in
+`/etc/fitness-app/deployment.env`. These identifiers are not credentials. The
+replication script authenticates with the VM's instance principal, so no OCI API
+key is stored on the host, in GitHub, or in the repository.
+
+Test the instance principal as the deployment user:
+
+```sh
+sudo -u fitness-app OCI_CLI_AUTH=instance_principal oci os bucket get \
+  --namespace-name <object-storage-namespace> \
+  --bucket-name <backup-bucket>
+sudo -u fitness-app OCI_CLI_AUTH=instance_principal oci os object-lifecycle-policy get \
+  --namespace-name <object-storage-namespace> \
+  --bucket-name <backup-bucket> \
+  --query 'data.rules[].{name:name,enabled:"is-enabled",action:action,days:"time-amount"}' \
+  --output table
+```
+
+Confirm the named rule reports `enabled: true`, `action: DELETE`, and `days: 90`.
+OCI runs lifecycle rules daily and may take up to 24 hours to begin processing.
+
+`replicate-backups.sh` uploads new `.dump` files as single-part objects and never
+passes the OCI CLI delete option. Its instance principal cannot overwrite or
+delete objects, including through multipart APIs. Local retention therefore
+cannot remove the independent Object Storage copies; only the bucket's 90-day
+lifecycle rule expires them.
+
+### Daily timer
+
+After the first deployment, install and enable the systemd units:
+
+```sh
+sudo bash -c '
+  set -euo pipefail
+  source /etc/fitness-app/deployment.env
+  source_path=${FITNESS_DATA_ROOT:-/srv/fitness-app}/source
+  install -d -m 755 /usr/local/lib/fitness-app
+  install -m 755 \
+    "$source_path/deployment/scripts/backup-job.sh" \
+    /usr/local/lib/fitness-app/backup-job.sh
+  install -m 644 \
+    "$source_path/deployment/systemd/fitness-app-backup.service" \
+    "$source_path/deployment/systemd/fitness-app-backup.timer" \
+    /etc/systemd/system/
+'
+sudo systemctl daemon-reload
+sudo systemctl enable --now fitness-app-backup.timer
+systemctl list-timers fitness-app-backup.timer
+```
+
+The fixed launcher reads `/etc/fitness-app/deployment.env`, so a nondefault
+`FITNESS_DATA_ROOT` still resolves the managed checkout correctly. After a
+deployment that changes the launcher or units, reinstall those host copies.
+
+The persistent timer runs once per day around 03:00 server time, creates and
+verifies a local dump, then syncs retained dumps to Object Storage. Exercise the
+complete job after setup and inspect its logs:
+
+```sh
+sudo systemctl start fitness-app-backup.service
+sudo systemctl show fitness-app-backup.service --property=Result --property=ExecMainStatus
+sudo journalctl --unit fitness-app-backup.service --since today
+```
+
+The oneshot service returns to an inactive state after a successful run. A
+backup or replication failure makes it fail and remains visible in the systemd
+journal. The next timer run retries the complete sequence.
 
 ## Restore rehearsal
 
@@ -251,6 +356,25 @@ curl --fail http://127.0.0.1:8080/health
 Restore validates the archive first, then drops and recreates the application
 database before loading it. Keep the application stopped until the command
 succeeds and the database-backed health check passes.
+
+If the VM-local copy is unavailable, download the selected object through an
+authenticated OCI Console session or sync it to a replacement OCI host with an
+authorized instance principal:
+
+```sh
+oci os object sync \
+  --auth instance_principal \
+  --namespace-name <object-storage-namespace> \
+  --bucket-name <backup-bucket> \
+  --prefix production/ \
+  --dest-dir /srv/fitness-app/backups \
+  --include '*.dump'
+```
+
+Periodically download at least one recent verified dump to a private disk on the
+Mac. This off-tenancy copy is the recovery source if the OCI tenancy or bucket is
+unavailable. Do not place dumps in Git, GitHub Actions artifacts, or public
+storage.
 
 ## Manual Mac failover
 

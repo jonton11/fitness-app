@@ -1,0 +1,16 @@
+[Unit]
+Description=Create and replicate a verified fitness app database backup
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=fitness-app
+Group=fitness-app
+Environment=HOME=/home/fitness-app
+Environment=PATH=/home/fitness-app/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
+Environment=FITNESS_DEPLOYMENT_CONFIG=/etc/fitness-app/deployment.env
+ExecStart=/usr/local/lib/fitness-app/backup-job.sh
+TimeoutStartSec=30min
+UMask=0077
