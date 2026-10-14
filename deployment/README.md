@@ -1,35 +1,169 @@
 # Production Deployment
 
-The production stack runs PostgreSQL, the Rails API, and a Caddy container that
+The reference production host is an Oracle Cloud Infrastructure Always Free
+Ubuntu ARM64 VM. Docker Compose runs PostgreSQL, the Rails API, and Caddy. Caddy
 serves the compiled React application and proxies API requests. Only Caddy is
 published to the host, and it listens on loopback so Tailscale Serve can expose
-it privately over HTTPS.
+the app privately over HTTPS.
 
-## Environment
+The repository contains no production credentials or owner account. A fork uses
+its own Tailscale identity, operator-owned SSH configuration, and host-local
+files. GitHub Actions verifies the production build but has no access to the
+production host.
 
-Keep the populated environment file outside the repository. The planned Windows
-location is:
+## Host prerequisites
 
-```text
-C:\ProgramData\FitnessApp\production.env
+Create an Always Free-eligible `VM.Standard.A1.Flex` instance with a supported
+Ubuntu LTS image. Keep Rails, PostgreSQL, port 8080, and SSH closed in the OCI
+public ingress rules. The operator workstation reaches SSH through Tailscale.
+
+Install Docker Engine with the Compose plugin, Git, curl, Tailscale, and OpenSSH
+Server. Create a dedicated `fitness-app` deployment user, give it permission to
+run Docker, and enable the system services:
+
+```sh
+sudo adduser --disabled-password --gecos "" fitness-app
+sudo usermod --append --groups docker fitness-app
+sudo systemctl enable --now docker
+sudo systemctl enable --now ssh
+sudo systemctl enable --now tailscaled
+docker compose version
+git --version
+curl --version
 ```
 
-Use `deployment/production.env.example` as the list of required values. Generate
-the Rails secret locally with `api/bin/rails secret`. Never commit the populated
-file, credentials, certificates, API tokens, or database backups.
+Docker access is effectively root access. Do not use the deployment account for
+unrelated workloads. Start a new login session after changing its group
+membership.
+
+Create the host-owned configuration directories:
+
+```sh
+sudo install -d -m 750 -o fitness-app -g fitness-app /etc/fitness-app
+sudo install -d -m 750 -o fitness-app -g fitness-app /srv/fitness-app
+sudo install -d -m 750 -o fitness-app -g fitness-app /srv/fitness-app/backups
+```
+
+Copy `deployment/deployment.env.example` to
+`/etc/fitness-app/deployment.env` and `deployment/production.env.example` to
+`/etc/fitness-app/production.env`. Populate them on the host and restrict access:
+
+```sh
+sudo chown fitness-app:fitness-app /etc/fitness-app/deployment.env /etc/fitness-app/production.env
+sudo chmod 600 /etc/fitness-app/deployment.env /etc/fitness-app/production.env
+```
+
+Generate `SECRET_KEY_BASE` with `api/bin/rails secret` from a local checkout and
+generate a unique PostgreSQL password. Never commit the populated files,
+credentials, certificates, API tokens, or database backups.
+
+## Private HTTPS
+
+Log the server into the operator's tailnet, assign a dedicated production tag,
+and configure Tailscale Serve once:
+
+```sh
+sudo tailscale serve --bg http://127.0.0.1:8080
+tailscale serve status
+```
+
+The Serve configuration and Tailscale daemon survive host restarts. Production
+containers use `restart: unless-stopped`, and Docker starts through systemd.
+Tailscale controls private network access and TLS; Caddy routes web and API
+traffic; Rails still requires application authentication.
+
+Configure key-only OpenSSH access for the `fitness-app` user. Put only the
+operator workstation's public key in `~fitness-app/.ssh/authorized_keys`. Keep
+the private key on the operator workstation. Record the server's OpenSSH host
+key from a trusted connection and verify its fingerprint before adding it to the
+operator workstation's known-hosts file. Do not use `ssh-keyscan` during a
+deployment.
+
+Grant only the operator's Tailscale identity access to TCP 22 on the production
+device. Do not forward ports 22 or 8080 from another network, and do not add
+public OCI ingress rules for them.
+
+## Operator deployment
+
+GitHub Actions builds and tests the production stack but never connects to the
+production VM. Deploy from a trusted macOS or Linux workstation after the exact
+`main` commit passes CI. The workstation must be connected to the same tailnet
+as the production host and have `git`, `ssh`, and `scp` installed.
+
+Configure a dedicated host alias in `~/.ssh/config`. Keep the hostname, private
+key, and verified known-hosts entry outside the repository:
+
+```sshconfig
+Host fitness-production
+  HostName replace-with-private-tailscale-hostname
+  User fitness-app
+  IdentityFile ~/.ssh/fitness-app-production
+  IdentitiesOnly yes
+  BatchMode yes
+  StrictHostKeyChecking yes
+  UserKnownHostsFile ~/.ssh/fitness-app-production-known-hosts
+  ServerAliveInterval 15
+  ServerAliveCountMax 4
+```
+
+Create the operator configuration directory:
+
+```sh
+mkdir -p ~/.config/fitness-app
+chmod 700 ~/.config/fitness-app
+```
+
+Then create `~/.config/fitness-app/operator.env`. The values identify the
+deployment target and public source repository; they are not application or
+database credentials:
+
+```sh
+FITNESS_PRODUCTION_SSH_TARGET=fitness-production
+FITNESS_DEPLOY_REPOSITORY_URL=https://github.com/replace-with-owner/fitness-app.git
+```
+
+```sh
+chmod 600 ~/.config/fitness-app/operator.env
+```
+
+Application and database secrets remain in
+`/etc/fitness-app/production.env` on the production host. The SSH private key
+remains in the operator's standard SSH configuration. Neither belongs in GitHub
+repository settings or tracked files.
+
+After the target commit passes CI, update a local `main` checkout and deploy its
+exact commit:
+
+```sh
+git switch main
+git pull --ff-only
+deployment_commit=$(git rev-parse HEAD)
+./deployment/scripts/deploy-remote.sh "$deployment_commit"
+```
+
+The operator script fetches `origin/main` and refuses to continue unless the
+requested commit is both the current checkout and the exact remote `main` tip.
+It also refuses locally modified deployment scripts. It then uploads the two
+host-side scripts over SSH and starts the deployment. A fork supplies its own
+operator configuration and public repository URL; CI requires no production
+configuration and never attempts a deployment.
+
+On the host, the deployment script refuses a dirty managed checkout, verifies
+that the exact requested commit belongs to the configured repository's
+`origin/main`, builds the images, stops web and API traffic, creates a
+pre-migration backup, runs Rails migrations, updates the services, and requires
+the database-backed health check to pass. Failures print container state and
+logs to the operator's terminal and never record a successful deployed commit.
 
 ## Local verification
 
-Create a temporary environment file outside the checkout, then run:
+Use a populated environment file outside the checkout:
 
 ```sh
 docker compose --env-file /path/to/production.env -f compose.production.yml build
 docker compose --env-file /path/to/production.env -f compose.production.yml up -d
 curl --fail http://127.0.0.1:8080/health
 ```
-
-The API and PostgreSQL do not publish host ports. The `/health` response is only
-successful when Rails can connect to PostgreSQL.
 
 Stop the stack without deleting its database volume:
 
@@ -39,168 +173,58 @@ docker compose --env-file /path/to/production.env -f compose.production.yml down
 
 Do not add `--volumes` when stopping a production or recovery stack.
 
-## Private HTTPS
-
-The Windows host will use persistent Tailscale Serve configuration to terminate
-private HTTPS and proxy to `http://127.0.0.1:8080`. Tailscale, Caddy, Rails, and
-PostgreSQL remain separate layers: Tailscale controls private network access and
-TLS, Caddy routes web and API traffic, and Rails still requires application
-authentication.
-
-On Windows, enable Tailscale unattended mode and configure Serve once:
-
-```powershell
-tailscale serve --bg http://127.0.0.1:8080
-tailscale serve status
-```
-
-The background Serve configuration survives Tailscale and host restarts. Docker
-Desktop must start when the production Windows account signs in; every long-lived
-container uses `restart: unless-stopped`. Test the complete startup path after a
-Windows reboot before treating the host as production.
-
-## Windows host
-
-The deployment checkout is managed at
-`C:\ProgramData\FitnessApp\source`. Do not edit files there manually. Create
-`C:\ProgramData\FitnessApp\production.env` from the committed example and create
-the backup directory before the first deploy. The populated environment file,
-database volume, and backups never leave the host during deployment.
-
-Install and configure Windows OpenSSH Server for key-only access by a dedicated
-deployment account. That account needs permission to run Docker and write to
-`C:\ProgramData\FitnessApp`, but it does not need a GitHub credential because the
-repository is public. Restrict the Windows firewall rule for TCP 22 to the
-Tailscale interface or Tailscale address ranges. Do not forward port 22 or 8080
-from the router.
-
-Use a dedicated SSH key pair for deployment. Put only the public key in the
-deployment account's `authorized_keys`. Record the Windows OpenSSH host key from
-a trusted local connection and compare its fingerprint with the host's
-`C:\ProgramData\ssh\ssh_host_ed25519_key.pub` before storing it in GitHub. The
-workflow uses strict host checking and never calls `ssh-keyscan` during a deploy.
-
-## GitHub deployment
-
-This public repository must not use a persistent self-hosted runner on the
-production machine. The deploy job uses an ephemeral GitHub-hosted runner,
-authenticates to Tailscale with GitHub OIDC, and reaches Windows through standard
-OpenSSH over the tailnet.
-
-Create a GitHub environment named `production` and limit its deployment branch
-to protected `main`. Configure these environment variables:
-
-```text
-TAILSCALE_OIDC_CLIENT_ID
-TAILSCALE_OIDC_AUDIENCE
-PRODUCTION_SSH_HOST
-PRODUCTION_SSH_USER
-```
-
-Configure these environment secrets:
-
-```text
-PRODUCTION_SSH_PRIVATE_KEY
-PRODUCTION_SSH_KNOWN_HOSTS
-```
-
-The known-hosts value is public key material, but keeping it in the environment
-also avoids publishing the private tailnet hostname. The SSH private key is the
-only long-lived deployment credential in GitHub. Application secrets remain in
-the host-local production environment file.
-
-In Tailscale, create a GitHub OIDC federated identity with `auth_keys` write
-scope and permission to issue `tag:github-deploy`. This repository uses GitHub's
-immutable OIDC subject format:
-
-```text
-repo:jonton11@10856948/fitness-app@1398605359:environment:production
-```
-
-Grant `tag:github-deploy` access only to TCP 22 on the Windows production device,
-which should have a separate production tag. Store the generated Tailscale
-client ID and audience as the GitHub environment variables above; neither value
-is a secret.
-
-Finally, create the repository variable below only after the host, tailnet ACL,
-SSH key, environment file, and backup directory are ready:
-
-```text
-PRODUCTION_DEPLOY_ENABLED=true
-```
-
-Every push to `main` then deploys only after Rails, web, iOS, and Compose checks
-pass. A manual run of the CI workflow on `main` follows the same checks and can
-be used for the initial deploy or a retry.
-
-The deployment script refuses a dirty managed checkout, verifies that the exact
-requested commit belongs to `origin/main`, builds images, stops web and API
-traffic, creates a pre-migration backup, runs Rails migrations, updates the
-services, and requires the database-backed health endpoint to pass. Failures
-print container state and logs and do not report a successful deployed commit.
-Once application traffic has been stopped, a failed backup or migration leaves
-it stopped so an operator can retry or restore without accepting new writes.
-
 ## Initial account
 
-There is no public sign-up flow. After the first successful deploy, run the
-existing Rails tasks on the Windows host to provision the single user and issue
-the iPhone API token. Read the password without putting it in shell history:
+There is no public sign-up flow. After the first successful deploy, provision
+the installation's owner and issue the iPhone API token on the host. Read the
+password without putting it in shell history:
 
-```powershell
-Set-Location C:\ProgramData\FitnessApp\source
-$env:FITNESS_USER_EMAIL = Read-Host "Email"
-$securePassword = Read-Host "Password" -AsSecureString
-$env:FITNESS_USER_PASSWORD = [System.Net.NetworkCredential]::new("", $securePassword).Password
-docker compose --env-file C:\ProgramData\FitnessApp\production.env -f compose.production.yml run --rm -e FITNESS_USER_EMAIL -e FITNESS_USER_PASSWORD api bin/rails fitness:provision_user
-Remove-Item Env:FITNESS_USER_PASSWORD
+```sh
+cd /srv/fitness-app/source
+read -r -p "Email: " FITNESS_USER_EMAIL
+read -r -s -p "Password: " FITNESS_USER_PASSWORD
+printf '\n'
+export FITNESS_USER_EMAIL FITNESS_USER_PASSWORD
+docker compose --env-file /etc/fitness-app/production.env -f compose.production.yml run --rm \
+  -e FITNESS_USER_EMAIL -e FITNESS_USER_PASSWORD api bin/rails fitness:provision_user
+unset FITNESS_USER_PASSWORD
 ```
 
-Issue the iPhone token and copy its one-time plaintext output directly into the
-app's Keychain-backed configuration:
+Issue the token and copy its one-time plaintext output directly into the app's
+Keychain-backed configuration:
 
-```powershell
-$env:FITNESS_API_TOKEN_NAME = "iPhone"
-docker compose --env-file C:\ProgramData\FitnessApp\production.env -f compose.production.yml run --rm -e FITNESS_USER_EMAIL -e FITNESS_API_TOKEN_NAME api bin/rails fitness:issue_api_token
-Remove-Item Env:FITNESS_USER_EMAIL
-Remove-Item Env:FITNESS_API_TOKEN_NAME
+```sh
+export FITNESS_API_TOKEN_NAME=iPhone
+docker compose --env-file /etc/fitness-app/production.env -f compose.production.yml run --rm \
+  -e FITNESS_USER_EMAIL -e FITNESS_API_TOKEN_NAME api bin/rails fitness:issue_api_token
+unset FITNESS_USER_EMAIL FITNESS_API_TOKEN_NAME
 ```
 
 Do not add the password or printed API token to `production.env`, Git, or GitHub.
 
 ## Backups
 
-`FITNESS_BACKUP_DIRECTORY` must point to a host directory outside the repository
-and outside the Docker volume. The default Windows location is:
-
-```text
-C:\ProgramData\FitnessApp\backups
-```
-
-Create the directory before running a backup. The maintenance container writes a
-full PostgreSQL custom-format dump, restores the complete archive into a
-disposable database, and only then publishes the final `.dump` file.
+`FITNESS_BACKUP_DIRECTORY` points to a host directory outside the checkout and
+outside the Docker volume. The maintenance container writes a full PostgreSQL
+custom-format dump, restores the archive into a disposable database, and only
+then publishes the final `.dump` file.
 
 Create a daily backup:
 
 ```sh
-docker compose --env-file /path/to/production.env -f compose.production.yml run --rm -e BACKUP_KIND=daily backup
+/srv/fitness-app/source/deployment/scripts/backup.sh daily
 ```
 
 Create a pre-deploy backup:
 
 ```sh
-docker compose --env-file /path/to/production.env -f compose.production.yml run --rm -e BACKUP_KIND=pre-deploy backup
+/srv/fitness-app/source/deployment/scripts/backup.sh pre-deploy
 ```
 
-Daily and pre-deploy backups have separate retention limits. The defaults retain
-14 daily backups and 10 recent deployment backups. The Windows host should run
-`deployment/scripts/backup.ps1` once per day from Task Scheduler under the same
-Windows account that runs Docker Desktop. A failed script exits nonzero so Task
-Scheduler records the failure.
-
-Keep at least one recent verified dump on the Mac or another private local disk.
-Do not store dumps in Git, GitHub Actions artifacts, or a public cloud location.
+Daily and pre-deploy backups have separate retention limits. The defaults keep
+14 daily backups and 10 recent deployment backups. Backup scheduling and private
+OCI Object Storage replication are configured separately from the application
+deploy so cloud credentials remain outside this repository.
 
 ## Restore rehearsal
 
@@ -209,15 +233,18 @@ restores the complete archive into a disposable database without changing the
 application database:
 
 ```sh
-docker compose --env-file /path/to/production.env -f compose.production.yml run --rm -e BACKUP_FILE=fitness-daily-20261011T120000Z.dump verify-backup
+cd /srv/fitness-app/source
+docker compose --env-file /etc/fitness-app/production.env -f compose.production.yml run --rm \
+  -e BACKUP_FILE=fitness-daily-20261011T120000Z.dump verify-backup
 ```
 
 Stop application traffic, restore the selected dump, and restart the stack:
 
 ```sh
-docker compose --env-file /path/to/production.env -f compose.production.yml stop web api
-docker compose --env-file /path/to/production.env -f compose.production.yml run --rm -e CONFIRM_RESTORE=yes -e BACKUP_FILE=fitness-daily-20261011T120000Z.dump restore
-docker compose --env-file /path/to/production.env -f compose.production.yml up -d
+docker compose --env-file /etc/fitness-app/production.env -f compose.production.yml stop web api
+docker compose --env-file /etc/fitness-app/production.env -f compose.production.yml run --rm \
+  -e CONFIRM_RESTORE=yes -e BACKUP_FILE=fitness-daily-20261011T120000Z.dump restore
+docker compose --env-file /etc/fitness-app/production.env -f compose.production.yml up -d
 curl --fail http://127.0.0.1:8080/health
 ```
 
@@ -227,18 +254,16 @@ succeeds and the database-backed health check passes.
 
 ## Manual Mac failover
 
-Use one writable server at a time. Before promoting the Mac, shut down the
-Windows stack or otherwise prevent it from returning as a writable server.
+Use one writable server at a time. Before promoting the Mac, stop the OCI stack
+or otherwise prevent it from returning as a writable server.
 
-1. Copy the latest verified dump to a private backup directory on the Mac.
-2. Create a populated production environment file outside the checkout. Set
+1. Obtain the latest verified dump on the Mac.
+2. Create a populated production environment file outside the checkout and set
    `FITNESS_BACKUP_DIRECTORY` to the Mac backup directory.
 3. Start PostgreSQL with `docker compose --env-file /path/to/production.env -f compose.production.yml up -d postgres`.
 4. Run the documented verify and restore commands against the selected dump.
 5. Start the full stack and require `curl --fail http://127.0.0.1:8080/health` to pass.
-6. Configure Tailscale Serve on the Mac and update clients to the promoted
-   private URL.
+6. Configure Tailscale Serve on the Mac and point clients to the promoted private URL.
 
-When returning production to Windows, take and verify a final Mac backup, stop
-the Mac stack, restore that backup on Windows, and only then make Windows
-authoritative again.
+When returning production to OCI, take and verify a final Mac backup, stop the
+Mac stack, restore that backup on OCI, and only then make OCI authoritative.
