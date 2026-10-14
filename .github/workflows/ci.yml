@@ -212,9 +212,32 @@ jobs:
           FITNESS_BACKUP_DIRECTORY: ${{ runner.temp }}/fitness-backups
         run: docker compose --env-file deployment/production.env.example -f compose.production.yml down --volumes --remove-orphans
 
+  production_arm64:
+    name: Production ARM64
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify runner architecture
+        run: test "$(uname -m)" = "aarch64"
+      - name: Build production images
+        run: docker compose --env-file deployment/production.env.example -f compose.production.yml build api web
+      - name: Start production stack
+        env:
+          FITNESS_BACKUP_DIRECTORY: ${{ runner.temp }}/fitness-arm64-backups
+        run: |
+          mkdir -p "$FITNESS_BACKUP_DIRECTORY"
+          docker compose --env-file deployment/production.env.example -f compose.production.yml up -d --wait
+      - name: Verify production health
+        run: curl --fail --show-error http://127.0.0.1:8080/health
+      - name: Clean up production stack
+        if: always()
+        env:
+          FITNESS_BACKUP_DIRECTORY: ${{ runner.temp }}/fitness-arm64-backups
+        run: docker compose --env-file deployment/production.env.example -f compose.production.yml down --volumes --remove-orphans
+
   deploy:
     name: Deploy production
-    needs: [api, web, ios, compose]
+    needs: [api, web, ios, compose, production_arm64]
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && vars.PRODUCTION_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
